@@ -15,3 +15,4 @@ git clone https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
 git clone https://github.com/sirpdboy/luci-app-taskplan package/luci-app-taskplan
 git clone https://github.com/vernesong/OpenClash.git package/luci-app-openclash
 rm -rf feeds/luci/applications/luci-app-openclash
+git clone https://github.com/linkease/istore.git package/istore
