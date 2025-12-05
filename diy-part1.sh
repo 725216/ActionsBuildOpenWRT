@@ -18,4 +18,4 @@ git clone https://github.com/vernesong/OpenClash.git package/luci-app-openclash
 rm -rf feeds/luci/applications/luci-app-openclash
 git clone https://github.com/linkease/istore.git package/istore
 
-src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main
+git clone https://github.com/nikkinikki-org/OpenWrt-nikki.git package/nikk
