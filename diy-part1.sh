@@ -18,4 +18,4 @@ git clone https://github.com/vernesong/OpenClash.git package/luci-app-openclash
 rm -rf feeds/luci/applications/luci-app-openclash
 git clone https://github.com/linkease/istore.git package/istore
 
-echo "src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main" >> "feeds.conf.default"
+src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main
