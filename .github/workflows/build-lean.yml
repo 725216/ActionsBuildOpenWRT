@@ -1,4 +1,4 @@
-name: Build 360T7 OpenWrt
+name: Build lean OpenWrt
 
 on:
   repository_dispatch:
