@@ -5,8 +5,7 @@
 
 # Add a feed source
 #sed -i '$a src-git helloworld https://github.com/fw876/helloworld' ./feeds.conf.default
-src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git;main
-src-git passwall_luci https://github.com/xiaorouji/openwrt-passwall.git;main
+
 sed -i '$a src-git helloworld https://github.com/fw876/helloworld.git' ./feeds.conf.default
 #sed -i '$a src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main' ./feeds.conf.default
 
