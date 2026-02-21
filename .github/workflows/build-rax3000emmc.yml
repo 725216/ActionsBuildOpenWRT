@@ -69,7 +69,7 @@ jobs:
         df -hT
         echo "=============================================================================="
 
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@main
 
     - name: Initialization environment
