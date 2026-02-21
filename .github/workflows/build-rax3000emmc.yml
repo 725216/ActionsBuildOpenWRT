@@ -70,7 +70,7 @@ jobs:
         echo "=============================================================================="
 
     - name: Checkout code
-      uses: actions/checkout@main
+      uses: actions/checkout@master
 
     - name: Initialization environment
       env:
