@@ -15,7 +15,7 @@ git clone https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
 git clone https://github.com/sirpdboy/luci-app-taskplan package/luci-app-taskplan
 git clone https://github.com/vernesong/OpenClash.git package/luci-app-openclash
 rm -rf feeds/luci/applications/luci-app-openclash
-git clone --depth 1 https://github.com/coolsnowwolf/luci.git /tmp/tmp_luci
-mv /tmp/tmp_luci/applications/luci-app-wireguard package/luci-app-wireguard/
-rm -rf /tmp/tmp_luci
+# git clone --depth 1 https://github.com/coolsnowwolf/luci.git /tmp/tmp_luci
+# mv /tmp/tmp_luci/applications/luci-app-wireguard package/luci-app-wireguard/
+# rm -rf /tmp/tmp_luci
 
