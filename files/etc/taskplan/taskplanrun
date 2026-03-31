@@ -1,0 +1,5 @@
+#!/bin/sh
+(sleep 25 && /usr/bin/taskplanhandler customscript Startup_task) &
+(sleep 40 && /usr/bin/taskplanhandler customscript2 Startup_task) &
+wait
+exit 0

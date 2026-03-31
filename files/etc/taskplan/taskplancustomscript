@@ -1,0 +1,2 @@
+cd /usr/bin/ && ./frpc -c frpc.ini
+

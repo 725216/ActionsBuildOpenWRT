@@ -1,0 +1,48 @@
+
+config samba
+	option workgroup 'WORKGROUP'
+	option charset 'UTF-8'
+	option description 'Samba on OpenWRT'
+
+config sambashare
+	option read_only 'no'
+	option guest_ok 'yes'
+	option create_mask '0777'
+	option dir_mask '0777'
+	option name '电视剧'
+	option path '/mnt/sda1/电视剧'
+
+config sambashare
+	option read_only 'no'
+	option guest_ok 'yes'
+	option create_mask '0777'
+	option dir_mask '0777'
+	option name '国产电影'
+	option path '/mnt/sda1/国产电影'
+
+config sambashare
+	option read_only 'no'
+	option guest_ok 'yes'
+	option create_mask '0777'
+	option dir_mask '0777'
+	option name '外国电影'
+	option path '/mnt/sda1/外国电影'
+
+config sambashare
+	option name '系统'
+	option read_only 'no'
+	option guest_ok 'no'
+	option create_mask '0777'
+	option dir_mask '0777'
+	option path '/mnt/sda1/系统'
+	option users 'root'
+
+config sambashare
+	option name 'mmc'
+	option path '/root/mmc/'
+	option read_only 'no'
+	option users 'root'
+	option guest_ok 'no'
+	option create_mask '0777'
+	option dir_mask '0777'
+
