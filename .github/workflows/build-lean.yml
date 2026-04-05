@@ -1,8 +1,11 @@
 name: Build lean OpenWrt
 
 on:
-  repository_dispatch:
-  workflow_dispatch:
+  #自动编译：当Auto-Clean运行完成后
+  workflow_run:
+    workflows: ["Auto-Clean"]
+    types:
+      - completed
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
