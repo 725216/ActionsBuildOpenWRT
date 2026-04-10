@@ -1,0 +1,24 @@
+name: Clean.yml
+on:
+  workflow_dispatch:  # 手动执行
+  schedule:
+    - cron: '0 5 * * *'  # 每天自动清理
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: 仅保留最新1条运行记录
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          # 只保留你之前的编译工作流
+          preserve_workflow_filename: build-openwrt.yml
+          # 只留最新1条
+          keep_minimum_runs: 1
+          # 无视天数，强制只留1条
+          retain_days: 0
