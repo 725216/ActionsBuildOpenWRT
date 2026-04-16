@@ -13,7 +13,7 @@ rm -rf feeds/luci/applications/luci-app-openclash
 git clone https://github.com/vernesong/OpenClash.git package/OpenClash
 
 git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky                               #  lucky 
-
+git clone  https://github.com/725216/mympd.git package/mympd
 git clone https://github.com/sirpdboy/luci-app-taskplan.git package/luci-app-taskplan               #  定时任务设置
 
 # git clone --depth 1 https://github.com/coolsnowwolf/luci.git /tmp/tmp_luci
