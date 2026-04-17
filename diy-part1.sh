@@ -16,8 +16,8 @@ git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky           
 git clone  https://github.com/725216/mympd.git package/mympd
 git clone https://github.com/sirpdboy/luci-app-taskplan.git package/luci-app-taskplan               #  定时任务设置
 
-# git clone --depth 1 https://github.com/coolsnowwolf/luci.git /tmp/tmp_luci
-# mv /tmp/tmp_luci/applications/luci-app-wireguard package/luci-app-wireguard/
-# rm -rf /tmp/tmp_luci
+git clone --depth 1 https://github.com/jcorporation/myMPD.git /tmp/tmp_mympd
+mv /tmp/tmp_mympd/contrib/packaging/openwrt package/mympd/
+rm -rf /tmp/tmp_mympd
 
 
