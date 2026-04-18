@@ -19,6 +19,6 @@ git clone https://github.com/sirpdboy/luci-app-taskplan.git package/luci-app-tas
 git clone --depth 1 https://github.com/jcorporation/myMPD.git /tmp/tmp_mympd
 mv /tmp/tmp_mympd/contrib/packaging/openwrt package/mympd/
 rm -rf /tmp/tmp_mympd
-# sed -i '78s/^[[:space:]]*/\t/' package/mympd/Makefile
+sed -i '78s/^[[:space:]]*/\t/' package/mympd/Makefile
 
 
