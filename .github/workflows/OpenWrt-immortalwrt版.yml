@@ -129,7 +129,7 @@ jobs:
 
     - name: Load custom configuration
       run: |
-        [ -e files ] && mv files openwrt/
+        [ -d "$GITHUB_WORKSPACE/files" ] && cp -rf "$GITHUB_WORKSPACE/files" "$GITHUB_WORKSPACE/openwrt/"
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH
         cd openwrt
