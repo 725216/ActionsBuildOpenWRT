@@ -9,8 +9,9 @@ rm -rf feeds/luci/applications/luci-app-passwall
 git clone https://github.com/Openwrt-Passwall/openwrt-passwall package/passwall-luci
 
 # 移除过时的helloworld
-rm -rf package/helloworld
-git clone https://github.com/fw876/helloworld.git package/helloworld
+sed -i "/helloworld/d" "feeds.conf.default"
+./scripts/feeds clean
+sed -i 'src-git small https://github.com/kenzok8/small' feeds.conf.default
 
 # 移除过时的openclash
 rm -rf feeds/luci/applications/luci-app-openclash
