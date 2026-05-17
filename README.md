@@ -6,4 +6,4 @@ Build OpenWRT By Github Actions
 
 集成进固件的驱动：声卡和usb摄像头驱动，kmod-wireguard
 
-编译了，在bin文件夹需上传安装的：luci-app-lucky,luci-app-natmap
+编译了，在bin文件夹需上传安装的：luci-app-lucky
