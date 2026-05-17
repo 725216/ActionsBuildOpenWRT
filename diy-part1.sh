@@ -14,11 +14,7 @@ git clone https://github.com/fw876/helloworld.git package/helloworld
 
 # 移除过时的openclash
 rm -rf feeds/luci/applications/luci-app-openclash
-git clone https://github.com/vernesong/OpenClash.git package/OpenClash
-
-# vssr
-git clone  git clone https://github.com/jerrykuku/lua-maxminddb.git package/lua-maxminddb
-git clone  https://github.com/MilesPoupart/luci-app-vssr.git package/luci-app-vssr 
+git clone https://github.com/vernesong/OpenClash.git package/OpenC
 
 git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky                               #  lucky 
 
