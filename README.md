@@ -4,7 +4,7 @@ Build OpenWRT By Github Actions
 
 集成进固件的插件列表：luci-app-docker,luci-app-aria2,luci-app-transmission,luci-app-openvpn,luci-app-samba4,luci-app-taskplan,luci-app-openclash,luci-app-upnp,luci-app-autoreboot luci-app-openlist,store,mpd,upmpdcli,mympd
 
-build-rax3000emmc里面包含passwall,OpenWrt-immortalwrt版包含ssr-lius
+build-rax3000emmc里面包含passwall,OpenWrt-immortalwrt版包含ssr-plus
 
 集成进固件的驱动：声卡和usb摄像头驱动，kmod-wireguard
 
