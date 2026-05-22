@@ -2,7 +2,7 @@
 Build OpenWRT By Github Actions
 源码：https://github.com/padavanonly/immortalwrt-mt798x-6.6
 
-集成进固件的插件列表：luci-app-docker,luci-app-aria2,luci-app-transmission,luci-app-openvpn,luci-app-samba4,luci-app-taskplan,luci-app-openclash,luci-app-upnp,luci-app-autoreboot luci-app-openlist,store
+集成进固件的插件列表：luci-app-docker,luci-app-aria2,luci-app-transmission,luci-app-openvpn,luci-app-samba4,luci-app-taskplan,luci-app-openclash,luci-app-upnp,luci-app-autoreboot luci-app-openlist,store,mpd,upmpdcli,mympd
 
 build-rax3000emmc里面包含passwall,OpenWrt-immortalwrt版包含ssr-lius
 
