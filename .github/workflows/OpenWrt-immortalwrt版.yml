@@ -1,12 +1,10 @@
 name: OpenWrt-immortalwrt版
 
 on:
-  #自动编译：当Auto-Clean运行完成后
-  workflow_run:
-    workflows: ["Auto-Clean"]
-    types:
-      - completed
-  repository_dispatch:
+  #自动运行：每天早上6点
+  schedule:
+    - cron: 0 22 * * *
+  #手动运行
   workflow_dispatch:
 
 env:
