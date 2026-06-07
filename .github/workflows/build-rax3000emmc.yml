@@ -2,8 +2,8 @@ name: build-rax3000emmc
 
 on:
   #自动运行：每天早上6点
-  schedule:
-    - cron: 0 22 * * *
+  #schedule:
+   # - cron: 0 22 * * *
   #手动运行
   workflow_dispatch:
 
