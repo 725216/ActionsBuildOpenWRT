@@ -1,10 +1,12 @@
 name: build-rax3000emmc
 
 on:
-  #自动运行：每天早上6点
-  #schedule:
-   # - cron: 0 22 * * *
-  #手动运行
+  #自动编译：当Auto-Clean运行完成后
+  workflow_run:
+    workflows: ["Auto-Clean"]
+    types:
+      - completed
+  #手动编译
   workflow_dispatch:
 
 env:
