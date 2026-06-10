@@ -6563,7 +6563,7 @@ CONFIG_PACKAGE_iptables-mod-tproxy=y
 CONFIG_PACKAGE_iptables-mod-extra=y
 CONFIG_PACKAGE_ipset=y
 # CONFIG_PACKAGE_luci-app-openfi is not set
-# CONFIG_PACKAGE_luci-app-openlist is not set
+CONFIG_PACKAGE_luci-app-openlist=y
 # CONFIG_PACKAGE_luci-app-openthread is not set
 CONFIG_PACKAGE_luci-app-openvpn=y
 # CONFIG_PACKAGE_luci-app-openvpn-server is not set
