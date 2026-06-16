@@ -14,7 +14,7 @@ git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky           
 
 git clone https://github.com/sirpdboy/luci-app-taskplan.git package/luci-app-taskplan               #  定时任务设置
 
-git clone https://github.com/linkease/istore.git package/istore
+# git clone https://github.com/linkease/istore.git package/istore
 
 git clone https://github.com/kenzok8/small.git package/small
 
