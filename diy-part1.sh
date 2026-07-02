@@ -12,7 +12,7 @@ rm -rf feeds/luci/applications/luci-app-openlist
 # git clone https://github.com/vernesong/OpenClash.git package/OpenC
 
 git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky                               #  lucky 
-
+git clone https://github.com/lzw981731/luci-app-openlist.git package/luci-app-openlist
 git clone https://github.com/sirpdboy/luci-app-taskplan.git package/luci-app-taskplan               #  定时任务设置
 
 # git clone https://github.com/linkease/istore.git package/istore
