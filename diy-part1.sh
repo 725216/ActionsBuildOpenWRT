@@ -9,7 +9,8 @@ rm -rf feeds/luci/applications/luci-app-ssr-plus
 rm -rf feeds/luci/applications/helloworld
 rm -rf feeds/luci/applications/luci-app-openclash
 rm -rf feeds/luci/applications/luci-app-openlist
-# git clone https://github.com/vernesong/OpenClash.git package/OpenC
+rm -rf feeds/packages/net/openlist
+# git clone https://github.com/vernesong/OpenClash.git package/OpenClash
 
 git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky                               #  lucky 
 git clone https://github.com/lzw981731/luci-app-openlist.git package/luci-app-openlist
