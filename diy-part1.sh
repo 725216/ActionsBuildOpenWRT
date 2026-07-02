@@ -13,7 +13,6 @@ rm -rf feeds/packages/net/openlist
 # git clone https://github.com/vernesong/OpenClash.git package/OpenClash
 
 git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky   #  lucky 
-git clone https://github.com/lzw981731/luci-app-openlist package/openlist
 git clone https://github.com/sirpdboy/luci-app-taskplan.git package/luci-app-taskplan               #  定时任务设置
 
 # git clone https://github.com/linkease/istore.git package/istore
@@ -27,4 +26,7 @@ mv /tmp/tmp_mympd/contrib/packaging/openwrt package/mympd/
 rm -rf /tmp/tmp_mympd
 sed -i '78s/^[[:space:]]*/\t/' package/mympd/Makefile
 
-
+git clone https://github.com/lzw981731/luci-app-openlist.git tmp-openlist
+cp -r tmp-openlist/openlist package/
+cp -r tmp-openlist/luci-app-openlistui package/
+rm -rf tmp-openlist
