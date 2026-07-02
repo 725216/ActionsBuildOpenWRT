@@ -26,7 +26,7 @@ mv /tmp/tmp_mympd/contrib/packaging/openwrt package/mympd/
 rm -rf /tmp/tmp_mympd
 sed -i '78s/^[[:space:]]*/\t/' package/mympd/Makefile
 
-git clone https://github.com/lzw981731/luci-app-openlist.git tmp-openlist
+git clone https://github.com/sbwml/luci-app-openlist2.git tmp-openlist
 cp -r tmp-openlist/openlist package/
 cp -r tmp-openlist/luci-app-openlistui package/
 rm -rf tmp-openlist
