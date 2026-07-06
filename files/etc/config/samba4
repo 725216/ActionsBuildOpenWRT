@@ -38,8 +38,8 @@ config sambashare
 	option users 'root'
 
 config sambashare
-	option name 'mmc'
-	option path '/root/mmc/'
+	option name 'mmcblk0p8'
+	option path '/mnt/mmcblk0p8/'
 	option read_only 'no'
 	option users 'root'
 	option guest_ok 'no'
