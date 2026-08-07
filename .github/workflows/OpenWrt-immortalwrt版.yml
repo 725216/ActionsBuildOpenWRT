@@ -1,240 +1,447 @@
-name: OpenWrt-immortalwrt版
+name: OpenWrt-ImmortalWrt-MT798x-6.6编译
 
 on:
-  #自动编译：当Auto-Clean运行完成后
-  workflow_run:
-    workflows: ["Auto-Clean"]
-    types:
-      - completed
-  #手动编译
+  schedule:
+    - cron: 0 21 * * *
+  push:
+    paths:
+      - OpenWrt-immortalwrt.config
+      - files/**
   workflow_dispatch:
+    inputs:
+      force_build:
+        description: 强制编译（无视变更检测）
+        required: false
+        default: false
+        type: boolean
+      clean_cache:
+        description: 清空缓存
+        required: false
+        default: false
+        type: boolean
 
 env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
   REPO_BRANCH: openwrt-24.10-6.6
-  FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: OpenWrt-immortalwrt.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: true
-  UPLOAD_FIRMWARE: true
-  UPLOAD_COWTRANSFER: false
-  UPLOAD_WETRANSFER: false
-  UPLOAD_RELEASE: false
+  COMPILE_THREAD: 2
+  CACHE_KEY_VER: v1.4
   TZ: Asia/Shanghai
+  TARGET_DIR: openwrt/bin/targets/mediatek/filogic
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 360
+    permissions:
+      contents: write
     steps:
-    - name: Before freeing up disk space
-      run: |
-        echo "Before freeing up disk space"
-        echo "=============================================================================="
-        df -hT
-        echo "=============================================================================="
+      - name: 释放磁盘空间
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
-    - name: Free Disk Space
-      uses: endersonmenezes/free-disk-space@v3
-      with:
-        remove_android: true
-        remove_dotnet: true
-        remove_haskell: true
-        remove_tool_cache: true
-        remove_swap: true
-        remove_packages: "azure-cli google-cloud-cli microsoft-edge-stable google-chrome-stable chromedriver google-cloud-sdk firefox postgresql* temurin-* *llvm* mysql* dotnet-sdk-* gfortran* imagemagick* *-jdk mongodb-* mono-* monodoc-* unixodbc-dev ant* perl libgl1-mesa-dri apache2* imagemagick* nginx phantomjs php* libpq-dev r-base* ruby* sphinxsearch"
-        remove_packages_one_command: true
-        remove_folders: "/usr/share/swift /usr/share/miniconda /usr/share/az* /usr/local/lib/node_modules /usr/local/share/chromium /usr/local/share/powershell /usr/local/julia* /usr/local/aws-cli /usr/local/aws-sam-cli /usr/share/gradle* /usr/local/bin/azcopy /usr/share/kotlinc /usr/share/apache-maven-* /usr/local/share/gecko_driver /usr/share/lintian"
+      - name: 拉取仓库配置文件
+        uses: actions/checkout@v6
 
-    - name: Free up disk space complete
-      run: |
-        echo "Free up disk space complete"
-        echo "=============================================================================="
-        df -hT
-        echo "=============================================================================="
+      - name: 生成编译日期标签
+        run: |
+          echo "BUILD_TAG=build-$(date +%Y%m%d)" >> $GITHUB_ENV
+          echo "BUILD_DATETIME=$(date +%Y-%m-%d_%H-%M)" >> $GITHUB_ENV
+        env:
+          TZ: Asia/Shanghai
 
-    - name: Create simulated physical disk
-      run: |
-        echo "Cleaning up Docker Images"
-        sudo docker system prune --all --force --volumes
+      - name: 安装OpenWrt编译完整依赖
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses-dev gawk flex bison quilt libssl-dev xsltproc libxml2-utils \
+          zstd device-tree-compiler python3 python3-ply python3-docutils libelf-dev ccache
 
-        echo "Clean Docker Images complete"
-        echo "=============================================================================="
-        df -hT
-        echo "=============================================================================="
+      - name: 清理本地缓存
+        if: github.event.inputs.clean_cache == 'true'
+        run: |
+          rm -rf openwrt .ccache build.log upstream_commit.txt last_commit.txt pkg_ref.txt plugins_remote.txt plugins_last.txt plugin_changed_list.txt tmp_small_check || true
+          echo "✅ 缓存清理完成"
 
-        mnt_size=$(expr $(df -h /mnt | tail -1 | awk '{print $4}' | sed 's/[[:alpha:]]//g' | sed 's/\..*//') - 1)
-        root_size=$(expr $(df -h / | tail -1 | awk '{print $4}' | sed 's/[[:alpha:]]//g' | sed 's/\..*//') - 4)
-        sudo truncate -s "${mnt_size}"G /mnt/mnt.img
-        sudo truncate -s "${root_size}"G /root.img
-        LOOP_MNT=$(sudo losetup -f --show /mnt/mnt.img)
-        LOOP_ROOT=$(sudo losetup -f --show /root.img)
-        sudo pvcreate "$LOOP_MNT" "$LOOP_ROOT"
-        sudo vgcreate github "$LOOP_MNT" "$LOOP_ROOT"
-        sudo lvcreate -n runner -l 100%FREE github
-        sudo mkfs.xfs -f -i sparse=0 -b size=4096 /dev/github/runner
-        sudo mkdir -p /builder
-        sudo mount /dev/github/runner /builder
-        sudo rm -rf "${GITHUB_WORKSPACE:?}"
-        sudo mkdir -p "$GITHUB_WORKSPACE"
-        sudo mount --bind /builder "$GITHUB_WORKSPACE"
-        sudo chown -R runner:runner "$GITHUB_WORKSPACE"
+      - name: 恢复编译缓存 dl + ccache
+        uses: actions/cache@v6
+        with:
+          path: |
+            openwrt/dl
+            .ccache
+            last_commit.txt
+            pkg_ref.txt
+            plugins_last.txt
+          key: mt798x-6.6-${{ env.CACHE_KEY_VER }}
+          restore-keys: |
+            mt798x-6.6-${{ env.CACHE_KEY_VER }}
 
-        echo "Disk adjustment finished. Ready for heavy building!"
-        echo "Simulated physical disk complete"
-        echo "=============================================================================="
-        df -hT
-        echo "=============================================================================="
+      - name: 校验源码目录
+        run: |
+          if [ -d openwrt ]; then
+            cd openwrt
+            REMOTE_URL=$(git remote get-url origin)
+            CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
+            if [[ "${REMOTE_URL}" != "${{ env.REPO_URL }}" || "${CURRENT_BRANCH}" != "${{ env.REPO_BRANCH }}" ]]; then
+              echo "⚠️ 目录分支不匹配，重建源码"
+              cd ..
+              rm -rf openwrt
+            fi
+          fi
 
-    - name: Checkout
-      uses: actions/checkout@v6
+      - name: 克隆/更新源码
+        run: |
+          if [ ! -d openwrt ]; then
+            git clone --depth=1 -b ${{ env.REPO_BRANCH }} ${{ env.REPO_URL }} openwrt
+          else
+            cd openwrt
+            git fetch origin --prune
+            git reset --hard origin/${{ env.REPO_BRANCH }}
+            git clean -df
+          fi
+          cd openwrt
+          git rev-parse HEAD > ../upstream_commit.txt
 
-    - name: Initialization environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq full-upgrade
-        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-        bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
-        genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
-        libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
-        libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
-        python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
-        swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /opt/ghc /usr/share/dotnet /usr/local/graalvm /usr/local/.ghcup \
-        /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules
-        sudo timedatectl set-timezone "$TZ"
-        sudo chown $USER:$GROUPS $GITHUB_WORKSPACE
+      - name: 读取.config，获取已启用插件包名
+        id: read_enabled_pkg
+        run: |
+          # 解析配置，提取 CONFIG_PACKAGE_xxx=y 的包名
+          grep -E '^CONFIG_PACKAGE_[a-zA-Z0-9_-]+=y' ${{ env.CONFIG_FILE }} | sed -E 's/CONFIG_PACKAGE_(.*)=y/\1/' | sort -u > /tmp/enabled_packages.txt
+          echo "ENABLED_PACKAGES<<EOF" >> $GITHUB_ENV
+          cat /tmp/enabled_packages.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          echo "==== .config 已启用第三方插件列表 ===="
+          cat /tmp/enabled_packages.txt
 
-    - name: Clone source code
-      run: |
-        git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
+      - name: 检测第三方插件远程最新commit（仅判断.config选中插件）
+        id: check_plugins
+        run: |
+          > plugins_remote.txt
+          > plugin_changed_list.txt
+          NEED_PLUGIN_UPDATE=0
 
-    - name: Load custom feeds
-      run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
+          # 格式：repo;branch;check_type;config_package_name
+          # config_package_name 对应 CONFIG_PACKAGE_xxx=y 的xxx
+          plugin_list=(
+            "https://github.com/kenzok8/small.git;master;simple;small"
+            "https://github.com/whzhni1/luci-app-vnt2.git;main;simple;luci-app-vnt2"
+            "https://github.com/gdy666/luci-app-lucky.git;main;simple;luci-app-lucky"
+            "https://github.com/sirpdboy/luci-app-taskplan.git;main;simple;luci-app-taskplan"
+            "https://github.com/jcorporation/myMPD.git;master;simple;mympd"
+          )
 
-    - name: Update feeds
-      run: cd openwrt && ./scripts/feeds update -a
+          TMP_SMALL="./tmp_small_check"
+          rm -rf "${TMP_SMALL}"
 
-    - name: Install feeds
-      run: cd openwrt && ./scripts/feeds install -a
+          for item in "${plugin_list[@]}"; do
+            IFS=';' read repo_url branch check_type pkg_name <<< "$item"
+            echo -e "\n检测仓库: $repo_url 分支:$branch 包名:${pkg_name}"
+            remote_commit=""
 
-    - name: Load custom configuration
-      run: |
-        [ -d "$GITHUB_WORKSPACE/files" ] && cp -rf "$GITHUB_WORKSPACE/files" "$GITHUB_WORKSPACE/openwrt/"
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
+            # 判断该插件是否在 .config 启用列表，未启用直接跳过git检测
+            if ! grep -qx "${pkg_name}" /tmp/enabled_packages.txt; then
+                echo "🔘 ${pkg_name} 在配置未勾选，跳过更新检测"
+                echo "$repo_url;$branch;SKIP_NOT_ENABLED;${pkg_name}" >> plugins_remote.txt
+                continue
+            fi
 
-    - name: Download package
-      id: package
-      run: |
-        cd openwrt
-        make defconfig
-        make download -j$(($(nproc) * 3 / 2))
-        find dl -size -1024c -exec ls -l {} \;
-        find dl -size -1024c -exec rm -f {} \;
+            echo "🔵 ${pkg_name} 已在.config启用，开始检测远程commit"
 
-    - name: Compile the firmware
-      id: compile
-      run: |
-        cd openwrt
-        echo -e "CPU $(nproc) thread"
-        echo -e "$(($(nproc) * 3 / 2)) thread compile"
-        make -j$(($(nproc) * 3 / 2)) || make -j1 || make -j1 V=s
-        echo "status=success" >> $GITHUB_OUTPUT
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+            if [[ "$check_type" == "simple" ]]; then
+              for retry in {1..3}; do
+                remote_commit=$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote --heads "$repo_url" "$branch" 2>/dev/null || true | awk '{print $1}' | tr -d '\r')
+                if [ -n "$remote_commit" ]; then
+                  break
+                fi
+                echo "🔄 第${retry}次获取commit失败，重试..."
+                sleep 3
+              done
+            elif [[ "$check_type" == "full" ]]; then
+              for retry in {1..2}; do
+                rm -rf "${TMP_SMALL}"
+                git clone --depth=1 -b "${branch}" "${repo_url}" "${TMP_SMALL}" 2>/dev/null || true
+                if [ -d "${TMP_SMALL}/.git" ]; then
+                  remote_commit=$(cd "${TMP_SMALL}"; git rev-parse HEAD)
+                  break
+                fi
+                echo "🔄 仓库clone失败，第${retry}次重试..."
+                sleep 4
+              done
+            fi
 
-    - name: Check space usage
-      if: (!cancelled())
-      run: df -hT
+            if [ -z "$remote_commit" ]; then
+              echo "⚠️ 网络获取commit失败: $repo_url $branch"
+              if [ -f plugins_last.txt ]; then
+                  old_line=$(grep "^${repo_url};${branch};" plugins_last.txt || true)
+                  if [ -n "$old_line" ]; then
+                      remote_commit=$(echo "$old_line" | cut -d';' -f3)
+                      echo "ℹ️ 复用上一轮快照commit: ${remote_commit}"
+                      echo "$repo_url;$branch;${remote_commit};${pkg_name}" >> plugins_remote.txt
+                      echo "$repo_url;$branch;NETWORK_FALLBACK(复用快照);${pkg_name}" >> plugin_changed_list.txt
+                      continue
+                  fi
+              fi
+              echo "🛑 首次拉取网络异常，跳过插件更新检测 $repo_url"
+              echo "$repo_url;$branch;FIRST_NET_ERROR_SKIP;${pkg_name}" >> plugin_changed_list.txt
+              continue
+            fi
 
-    - name: Upload bin directory
-      uses: actions/upload-artifact@v6
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
-      with:
-        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: openwrt/bin
+            echo "$repo_url;$branch;${remote_commit};${pkg_name}" >> plugins_remote.txt
+          done
 
-    - name: Organize files
-      id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
-      run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
+          rm -rf "${TMP_SMALL}"
 
-    - name: Upload firmware directory
-      uses: actions/upload-artifact@v6
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
+          if [ -f plugins_last.txt ]; then
+            while IFS= read -r line; do
+                repo=$(echo "$line" | cut -d';' -f1)
+                branch=$(echo "$line" | cut -d';' -f2)
+                old_hash=$(echo "$line" | cut -d';' -f3)
+                pkg=$(echo "$line" | cut -d';' -f4)
+                new_line=$(grep "^${repo};${branch};" plugins_remote.txt || true)
 
-    - name: Upload firmware to cowtransfer
-      id: cowtransfer
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
-      run: |
-        curl -fsSL git.io/file-transfer | sh
-        ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
-        echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
-        echo "url=$(cat cowtransfer.log | grep https | cut -f3 -d" ")" >> $GITHUB_OUTPUT
+                if [ -z "$new_line" ]; then
+                    exist_in_list=0
+                    for p in "${plugin_list[@]}"; do
+                        p_repo=${p%%;*}; p_br=$(echo "$p"|cut -d';' -f2)
+                        if [[ "$p_repo" == "$repo" && "$p_br" == "$branch" ]]; then
+                            exist_in_list=1
+                            break
+                        fi
+                    done
+                    if [[ $exist_in_list -eq 1 ]]; then
+                        echo "⚠️ 插件 $repo $branch 在上一轮快照存在，本轮缺失"
+                        NEED_PLUGIN_UPDATE=1
+                        echo "$repo;$branch;REMOVE;${pkg}" >> plugin_changed_list.txt
+                    else
+                        echo "ℹ️ 主动移除插件 $repo，忽略变更检测"
+                    fi
+                    continue
+                fi
 
-    - name: Upload firmware to WeTransfer
-      id: wetransfer
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
-      run: |
-        curl -fsSL git.io/file-transfer | sh
-        ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
-        echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
-        echo "url=$(cat wetransfer.log | grep https | cut -f3 -d" ")" >> $GITHUB_OUTPUT
+                new_hash=$(echo "$new_line" | cut -d';' -f3)
+                new_pkg=$(echo "$new_line" | cut -d';' -f4)
 
-    - name: Generate release tag
-      id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        touch release.txt
-        [ $UPLOAD_COWTRANSFER = true ] && echo "🔗 [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
-        [ $UPLOAD_WETRANSFER = true ] && echo "🔗 [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
-        echo "status=success" >> $GITHUB_OUTPUT
+                # SKIP_NOT_ENABLED 代表该插件未勾选，直接跳过对比
+                if [[ "${new_hash}" == "SKIP_NOT_ENABLED" ]]; then
+                    echo "🔘 ${new_pkg}未勾选，跳过hash对比"
+                    continue
+                fi
 
-    - name: Upload firmware to release
-      uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+                if [[ "$old_hash" != "$new_hash" ]]; then
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "✅【已启用插件检测到更新】$repo pkg:${new_pkg}"
+                  echo "分支: $branch"
+                  echo "旧HASH: $old_hash"
+                  echo "新HASH: $new_hash"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  NEED_PLUGIN_UPDATE=1
+                  echo "$repo;$branch;${old_hash}->${new_hash};${new_pkg}" >> plugin_changed_list.txt
+                fi
+            done < plugins_last.txt
 
-    - name: Delete workflow runs
-      uses: ophub/delete-releases-workflows@main
-      with:
-        delete_releases: false
-        # releases_keep_latest: 5
-        delete_workflows: true
-        workflows_keep_day: 7
-        gh_token: ${{ secrets.GITHUB_TOKEN }}
+            while IFS= read -r line; do
+              repo=$(echo "$line"|cut -d';' -f1)
+              branch=$(echo "$line"|cut -d';' -f2)
+              h=$(echo "$line"|cut -d';' -f3)
+              pkg=$(echo "$line"|cut -d';' -f4)
+              if [[ "$h" == "SKIP_NOT_ENABLED" ]];then continue;fi
+              if ! grep -q "^${repo};${branch};" plugins_last.txt; then
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "✅【新增已启用插件】$repo 分支:$branch pkg:${pkg}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                NEED_PLUGIN_UPDATE=1
+                echo "$repo;$branch;NEW_ADD;${pkg}" >> plugin_changed_list.txt
+              fi
+            done < plugins_remote.txt
 
-    - name: Remove old Releases
-      uses: ophub/delete-releases-workflows@main
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      with:
-        delete_releases: true
-        releases_keep_latest: 5
-        delete_tags: true
-        gh_token: ${{ secrets.GITHUB_TOKEN }}
+            if [ $NEED_PLUGIN_UPDATE -eq 0 ]; then
+              echo "✅ 所有.config已启用插件无更新"
+            fi
+          else
+            echo "ℹ️ 首次运行，无历史快照，暂不开启插件变更检测"
+            NEED_PLUGIN_UPDATE=0
+          fi
+
+          echo "NEED_PLUGIN_UPDATE=${NEED_PLUGIN_UPDATE}" >> $GITHUB_ENV
+
+      - name: 执行 diy-part1.sh
+        run: |
+          chmod +x ${{ env.DIY_P1_SH }}
+          cd openwrt
+          ../${{ env.DIY_P1_SH }}
+
+      - name: 导入配置 + 执行 diy-part2.sh
+        run: |
+          cp ${{ env.CONFIG_FILE }} openwrt/.config
+          chmod +x ${{ env.DIY_P2_SH }}
+          cd openwrt
+          ../${{ env.DIY_P2_SH }}
+          make defconfig
+
+      - name: 导出配置用于变更对比
+        run: |
+          cd openwrt
+          grep -E '^(CONFIG_PACKAGE_|CONFIG_LUCI_)' .config | sort > ../current_pkg.txt
+
+      - name: 判断是否启动编译
+        id: judge_build
+        run: |
+          NEED_BUILD=0
+          FORCE=${{ github.event.inputs.force_build }}
+          if [[ "$FORCE" == "true" ]]; then
+            echo "⚠️ 手动强制编译开启"
+            NEED_BUILD=1
+          fi
+
+          # 上游源码更新
+          if [ $NEED_BUILD -eq 0 ] && [ -f last_commit.txt ] && [ -f upstream_commit.txt ]; then
+            if ! diff -q last_commit.txt upstream_commit.txt >/dev/null; then
+              echo "⚠️ 上游源码更新，触发编译"
+              NEED_BUILD=1
+            fi
+          fi
+
+          # 第三方插件更新（仅.config选中插件）
+          if [ $NEED_BUILD -eq 0 ] && [ ${{ env.NEED_PLUGIN_UPDATE }} -eq 1 ]; then
+            echo "⚠️ .config已启用第三方插件存在变更，触发编译"
+            NEED_BUILD=1
+          fi
+
+          # 配置文件变更
+          if [ $NEED_BUILD -eq 0 ]; then
+            if [ ! -f pkg_ref.txt ]; then
+              echo "ℹ️ 首次构建，执行编译"
+              NEED_BUILD=1
+            elif ! diff -q pkg_ref.txt current_pkg.txt >/dev/null; then
+              echo "⚠️ 固件配置发生变化，开始编译"
+              NEED_BUILD=1
+            else
+              echo "✅ 源码、插件与配置无变更，跳过编译"
+            fi
+          fi
+
+          echo "NEED_BUILD=${NEED_BUILD}" >> $GITHUB_ENV
+
+      - name: 预下载源码包
+        if: env.NEED_BUILD == '1'
+        run: |
+          cd openwrt
+          make defconfig
+          find dl -size -1024c -exec rm -f {} \;
+          make download -j$(nproc) || make download -j1 V=s
+          echo "✅ 源码包下载完成"
+
+      - name: 编译固件
+        id: compile_firm
+        if: env.NEED_BUILD == '1'
+        run: |
+          cd openwrt
+          THREAD=${{ env.COMPILE_THREAD }}
+          LOG=${{ github.workspace }}/build.log
+          set -o pipefail
+          RESULT="fail"
+          if nice -n 10 make -j${THREAD} 2>&1 | tee ${LOG}; then
+            RESULT="ok"
+          else
+            echo "❌ 多线程编译失败，切换单线程重试"
+            cat ${LOG}
+            if nice -n 10 make -j1 V=s 2>&1 | tee ${LOG}; then
+              RESULT="ok"
+            else
+              echo "❌ 编译最终失败"
+              exit 1
+            fi
+          fi
+          BOARD=$(grep CONFIG_TARGET_BOARD .config | cut -d'=' -f2 | tr -d '"')
+          echo "result=${RESULT}" >> $GITHUB_OUTPUT
+          echo "BOARD=${BOARD}" >> $GITHUB_OUTPUT
+
+      - name: 更新缓存快照
+        if: steps.compile_firm.outputs.result == 'ok'
+        run: |
+          cp upstream_commit.txt last_commit.txt
+          cp current_pkg.txt pkg_ref.txt
+          cp plugins_remote.txt plugins_last.txt
+          echo "✅ 全部快照已更新"
+
+      - name: 上传插件变更清单
+        uses: actions/upload-artifact@v4
+        if: env.NEED_BUILD == '1'
+        with:
+          name: plugin-change-log
+          path: plugin_changed_list.txt
+          retention-days: 7
+
+      - name: 上传编译日志
+        uses: actions/upload-artifact@v4
+        if: env.NEED_BUILD == '1'
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
+
+      - name: 上传固件文件（Artifact）
+        if: steps.compile_firm.outputs.result == 'ok'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenWrt-Firmware-${{ steps.compile_firm.outputs.BOARD }}
+          path: |
+            openwrt/bin/targets/**/*.bin
+            openwrt/bin/targets/**/*.manifest
+          retention-days: 14
+
+      - name: 创建Release发布
+        if: steps.compile_firm.outputs.result == 'ok'
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.BUILD_TAG }}
+          name: MT798x 6.6内核自动构建 ${{ env.BUILD_DATETIME }}
+          files: |
+            ${{ env.TARGET_DIR }}/*
+            !${{ env.TARGET_DIR }}/packages/**/*
+          generate_release_notes: true
+          overwrite: true
+
+      # 清理旧Release，保留最新5个
+      - name: Retain latest 5 releases, remove older releases & tags
+        if: steps.compile_firm.outputs.result == 'ok'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const reserveCount = 5;
+            console.log(`设置保留最新 ${reserveCount} 个正式Release`);
+
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner, repo, per_page: 100
+            });
+
+            const validReleases = releases
+              .filter(item => !item.draft)
+              .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+
+            console.log(`当前正式Release总数：${validReleases.length}`);
+            const removeList = validReleases.slice(reserveCount);
+            console.log(`待删除数量：${removeList.length}`);
+
+            for (const release of removeList) {
+              console.log(`开始删除 Release: ${release.tag_name}`);
+              await github.rest.repos.deleteRelease({
+                owner, repo, release_id: release.id
+              });
+              try {
+                await github.rest.git.deleteRef({
+                  owner, repo, ref: `tags/${release.tag_name}`
+                });
+                console.log(`标签 ${release.tag_name} 删除成功`);
+              } catch (err) {
+                console.log(`标签 ${release.tag_name} 删除警告：`, err.message);
+              }
+            }
