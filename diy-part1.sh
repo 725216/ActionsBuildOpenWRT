@@ -12,7 +12,7 @@ rm -rf feeds/luci/applications/luci-app-openlist
 rm -rf feeds/packages/net/openlist
 # git clone https://github.com/vernesong/OpenClash.git package/OpenClash
 
-git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky   #  lucky 
+git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky   #  lucky
 git clone https://github.com/sirpdboy/luci-app-taskplan.git package/luci-app-taskplan               #  定时任务设置
 
 # git clone https://github.com/linkease/istore.git package/istore
@@ -26,3 +26,7 @@ mv /tmp/tmp_mympd/contrib/packaging/openwrt package/mympd/
 rm -rf /tmp/tmp_mympd
 sed -i '78s/^[[:space:]]*/\t/' package/mympd/Makefile
 
+# ====================== feeds 更新 ======================
+sed -i 's/#src-git/src-git/' feeds.conf.default
+./scripts/feeds update -a
+./scripts/feeds install -a
