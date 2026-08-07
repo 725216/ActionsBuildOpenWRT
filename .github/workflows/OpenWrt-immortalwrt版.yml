@@ -110,7 +110,6 @@ jobs:
       - name: 读取.config，获取已启用插件包名
         id: read_enabled_pkg
         run: |
-          # 解析配置，提取 CONFIG_PACKAGE_xxx=y 的包名
           grep -E '^CONFIG_PACKAGE_[a-zA-Z0-9_-]+=y' ${{ env.CONFIG_FILE }} | sed -E 's/CONFIG_PACKAGE_(.*)=y/\1/' | sort -u > /tmp/enabled_packages.txt
           echo "ENABLED_PACKAGES<<EOF" >> $GITHUB_ENV
           cat /tmp/enabled_packages.txt >> $GITHUB_ENV
@@ -126,7 +125,6 @@ jobs:
           NEED_PLUGIN_UPDATE=0
 
           # 格式：repo;branch;check_type;config_package_name
-          # config_package_name 对应 CONFIG_PACKAGE_xxx=y 的xxx
           plugin_list=(
             "https://github.com/kenzok8/small.git;master;simple;small"
             "https://github.com/whzhni1/luci-app-vnt2.git;main;simple;luci-app-vnt2"
@@ -226,7 +224,7 @@ jobs:
                 new_hash=$(echo "$new_line" | cut -d';' -f3)
                 new_pkg=$(echo "$new_line" | cut -d';' -f4)
 
-                # SKIP_NOT_ENABLED 代表该插件未勾选，直接跳过对比
+                # SKIP_NOT_ENABLED 代表该插件未勾选，直接跳过hash对比
                 if [[ "${new_hash}" == "SKIP_NOT_ENABLED" ]]; then
                     echo "🔘 ${new_pkg}未勾选，跳过hash对比"
                     continue
