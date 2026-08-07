@@ -128,9 +128,6 @@ jobs:
           plugin_list=(
             "https://github.com/kenzok8/small.git;master;simple;small"
             "https://github.com/whzhni1/luci-app-vnt2.git;main;simple;luci-app-vnt2"
-            "https://github.com/gdy666/luci-app-lucky.git;main;simple;luci-app-lucky"
-            "https://github.com/sirpdboy/luci-app-taskplan.git;main;simple;luci-app-taskplan"
-            "https://github.com/jcorporation/myMPD.git;master;simple;mympd"
           )
 
           TMP_SMALL="./tmp_small_check"
