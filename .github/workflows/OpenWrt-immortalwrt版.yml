@@ -1,4 +1,4 @@
-name: OpenWrt-ImmortalWrt-MT798x-6.6编译
+name: OpenWrt-ImmortalWrt-MT798x-6.6包含ssr-plus
 
 on:
   schedule:
@@ -27,7 +27,7 @@ env:
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   COMPILE_THREAD: 2
-  CACHE_KEY_VER: v1.4
+  CACHE_KEY_VER: v1.3
   TZ: Asia/Shanghai
   TARGET_DIR: openwrt/bin/targets/mediatek/filogic
 
@@ -107,47 +107,30 @@ jobs:
           cd openwrt
           git rev-parse HEAD > ../upstream_commit.txt
 
-      - name: 读取.config，获取已启用插件包名
-        id: read_enabled_pkg
-        run: |
-          grep -E '^CONFIG_PACKAGE_[a-zA-Z0-9_-]+=y' ${{ env.CONFIG_FILE }} | sed -E 's/CONFIG_PACKAGE_(.*)=y/\1/' | sort -u > /tmp/enabled_packages.txt
-          echo "ENABLED_PACKAGES<<EOF" >> $GITHUB_ENV
-          cat /tmp/enabled_packages.txt >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          echo "==== .config 已启用第三方插件列表 ===="
-          cat /tmp/enabled_packages.txt
-
-      - name: 检测第三方插件远程最新commit（仅判断.config选中插件）
+      - name: 检测第三方插件远程最新commit
         id: check_plugins
         run: |
           > plugins_remote.txt
           > plugin_changed_list.txt
           NEED_PLUGIN_UPDATE=0
 
-          # 格式：repo;branch;check_type;config_package_name
+          # 插件数组格式：repo;branch;check_type
+          # simple: ls‑remote轻量检测；full: clone仓库获取commit
           plugin_list=(
-            "https://github.com/kenzok8/small.git;master;simple;small"
-            "https://github.com/whzhni1/luci-app-vnt2.git;main;simple;luci-app-vnt2"
+            "https://github.com/kenzok8/small.git;master;simple"
+            "https://github.com/whzhni1/luci-app-vnt2.git;main;simple"
           )
 
           TMP_SMALL="./tmp_small_check"
           rm -rf "${TMP_SMALL}"
 
           for item in "${plugin_list[@]}"; do
-            IFS=';' read repo_url branch check_type pkg_name <<< "$item"
-            echo -e "\n检测仓库: $repo_url 分支:$branch 包名:${pkg_name}"
+            IFS=';' read repo_url branch check_type <<< "$item"
+            echo "检测仓库: $repo_url 分支:$branch 检测模式:$check_type"
             remote_commit=""
 
-            # 判断该插件是否在 .config 启用列表，未启用直接跳过git检测
-            if ! grep -qx "${pkg_name}" /tmp/enabled_packages.txt; then
-                echo "🔘 ${pkg_name} 在配置未勾选，跳过更新检测"
-                echo "$repo_url;$branch;SKIP_NOT_ENABLED;${pkg_name}" >> plugins_remote.txt
-                continue
-            fi
-
-            echo "🔵 ${pkg_name} 已在.config启用，开始检测远程commit"
-
             if [[ "$check_type" == "simple" ]]; then
+              # 彻底修复hash附带refs字段导致假更新问题
               for retry in {1..3}; do
                 remote_commit=$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote --heads "$repo_url" "$branch" 2>/dev/null || true | awk '{print $1}' | tr -d '\r')
                 if [ -n "$remote_commit" ]; then
@@ -157,6 +140,7 @@ jobs:
                 sleep 3
               done
             elif [[ "$check_type" == "full" ]]; then
+              # full模式保留，留给真正需要clone的仓库
               for retry in {1..2}; do
                 rm -rf "${TMP_SMALL}"
                 git clone --depth=1 -b "${branch}" "${repo_url}" "${TMP_SMALL}" 2>/dev/null || true
@@ -169,6 +153,7 @@ jobs:
               done
             fi
 
+            # 网络失败处理逻辑
             if [ -z "$remote_commit" ]; then
               echo "⚠️ 网络获取commit失败: $repo_url $branch"
               if [ -f plugins_last.txt ]; then
@@ -176,27 +161,27 @@ jobs:
                   if [ -n "$old_line" ]; then
                       remote_commit=$(echo "$old_line" | cut -d';' -f3)
                       echo "ℹ️ 复用上一轮快照commit: ${remote_commit}"
-                      echo "$repo_url;$branch;${remote_commit};${pkg_name}" >> plugins_remote.txt
-                      echo "$repo_url;$branch;NETWORK_FALLBACK(复用快照);${pkg_name}" >> plugin_changed_list.txt
+                      echo "$repo_url;$branch;${remote_commit}" >> plugins_remote.txt
+                      echo "$repo_url;$branch;NETWORK_FALLBACK(复用快照)" >> plugin_changed_list.txt
                       continue
                   fi
               fi
               echo "🛑 首次拉取网络异常，跳过插件更新检测 $repo_url"
-              echo "$repo_url;$branch;FIRST_NET_ERROR_SKIP;${pkg_name}" >> plugin_changed_list.txt
+              echo "$repo_url;$branch;FIRST_NET_ERROR_SKIP" >> plugin_changed_list.txt
               continue
             fi
 
-            echo "$repo_url;$branch;${remote_commit};${pkg_name}" >> plugins_remote.txt
+            echo "$repo_url;$branch;${remote_commit}" >> plugins_remote.txt
           done
 
           rm -rf "${TMP_SMALL}"
 
+          # 对比旧快照，查找更新/移除插件
           if [ -f plugins_last.txt ]; then
             while IFS= read -r line; do
                 repo=$(echo "$line" | cut -d';' -f1)
                 branch=$(echo "$line" | cut -d';' -f2)
                 old_hash=$(echo "$line" | cut -d';' -f3)
-                pkg=$(echo "$line" | cut -d';' -f4)
                 new_line=$(grep "^${repo};${branch};" plugins_remote.txt || true)
 
                 if [ -z "$new_line" ]; then
@@ -211,51 +196,40 @@ jobs:
                     if [[ $exist_in_list -eq 1 ]]; then
                         echo "⚠️ 插件 $repo $branch 在上一轮快照存在，本轮缺失"
                         NEED_PLUGIN_UPDATE=1
-                        echo "$repo;$branch;REMOVE;${pkg}" >> plugin_changed_list.txt
+                        echo "$repo;$branch;REMOVE" >> plugin_changed_list.txt
                     else
                         echo "ℹ️ 主动移除插件 $repo，忽略变更检测"
                     fi
                     continue
                 fi
-
                 new_hash=$(echo "$new_line" | cut -d';' -f3)
-                new_pkg=$(echo "$new_line" | cut -d';' -f4)
-
-                # SKIP_NOT_ENABLED 代表该插件未勾选，直接跳过hash对比
-                if [[ "${new_hash}" == "SKIP_NOT_ENABLED" ]]; then
-                    echo "🔘 ${new_pkg}未勾选，跳过hash对比"
-                    continue
-                fi
-
                 if [[ "$old_hash" != "$new_hash" ]]; then
                   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                  echo "✅【已启用插件检测到更新】$repo pkg:${new_pkg}"
+                  echo "✅【插件检测到更新】$repo"
                   echo "分支: $branch"
                   echo "旧HASH: $old_hash"
                   echo "新HASH: $new_hash"
                   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                   NEED_PLUGIN_UPDATE=1
-                  echo "$repo;$branch;${old_hash}->${new_hash};${new_pkg}" >> plugin_changed_list.txt
+                  echo "$repo;$branch;${old_hash}->${new_hash}" >> plugin_changed_list.txt
                 fi
             done < plugins_last.txt
 
+            # 查找新增插件
             while IFS= read -r line; do
               repo=$(echo "$line"|cut -d';' -f1)
               branch=$(echo "$line"|cut -d';' -f2)
-              h=$(echo "$line"|cut -d';' -f3)
-              pkg=$(echo "$line"|cut -d';' -f4)
-              if [[ "$h" == "SKIP_NOT_ENABLED" ]];then continue;fi
               if ! grep -q "^${repo};${branch};" plugins_last.txt; then
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo "✅【新增已启用插件】$repo 分支:$branch pkg:${pkg}"
+                echo "✅【新增插件】$repo 分支:$branch"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 NEED_PLUGIN_UPDATE=1
-                echo "$repo;$branch;NEW_ADD;${pkg}" >> plugin_changed_list.txt
+                echo "$repo;$branch;NEW_ADD" >> plugin_changed_list.txt
               fi
             done < plugins_remote.txt
 
             if [ $NEED_PLUGIN_UPDATE -eq 0 ]; then
-              echo "✅ 所有.config已启用插件无更新"
+              echo "✅ 所有插件无更新"
             fi
           else
             echo "ℹ️ 首次运行，无历史快照，暂不开启插件变更检测"
@@ -301,9 +275,9 @@ jobs:
             fi
           fi
 
-          # 第三方插件更新（仅.config选中插件）
+          # 第三方插件更新
           if [ $NEED_BUILD -eq 0 ] && [ ${{ env.NEED_PLUGIN_UPDATE }} -eq 1 ]; then
-            echo "⚠️ .config已启用第三方插件存在变更，触发编译"
+            echo "⚠️ 第三方插件存在变更，触发编译"
             NEED_BUILD=1
           fi
 
@@ -397,7 +371,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ env.BUILD_TAG }}
-          name: MT798x 6.6内核自动构建 ${{ env.BUILD_DATETIME }}
+          name: MT798x 6.6内核包含ssr-plus ${{ env.BUILD_DATETIME }}
           files: |
             ${{ env.TARGET_DIR }}/*
             !${{ env.TARGET_DIR }}/packages/**/*
