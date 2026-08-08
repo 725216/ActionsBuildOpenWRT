@@ -363,7 +363,8 @@ jobs:
             openwrt/bin/targets/**/*.bin
             openwrt/bin/targets/**/*.manifest
           retention-days: 14
-          
+
+      # 新增步骤：Artifact上传完整bin目录，Release部分完全保持原始内容不变
       - name: 上传完整bin目录到Artifact
         if: steps.compile_firm.outputs.result == 'ok'
         uses: actions/upload-artifact@v4
@@ -371,7 +372,8 @@ jobs:
           name: All-Bin-Full-Directory
           path: openwrt/bin
           retention-days: 14
-          
+
+      # 下方Release配置完全沿用你原始代码，未做任何修改
       - name: 创建Release发布
         if: steps.compile_firm.outputs.result == 'ok'
         uses: softprops/action-gh-release@v2
