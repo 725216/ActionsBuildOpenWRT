@@ -4,7 +4,7 @@
 # 拉取第三方插件示例
 git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky   #  lucky 
 git clone https://github.com/sirpdboy/luci-app-taskplan.git package/luci-app-taskplan               #  定时任务设置
-# git clone https://github.com/vernesong/OpenClash.git package/openclash
+git clone https://github.com/vernesong/OpenClash.git package/openclash
 # git clone https://github.com/linkease/istore.git package/istore
 git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages package/passwall-packages
 git clone https://github.com/Openwrt-Passwall/openwrt-passwall package/passwall-luci
