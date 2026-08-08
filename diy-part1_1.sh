@@ -6,8 +6,9 @@ git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky   #  lucky
 git clone https://github.com/sirpdboy/luci-app-taskplan.git package/luci-app-taskplan               #  定时任务设置
 # git clone https://github.com/vernesong/OpenClash.git package/openclash
 # git clone https://github.com/linkease/istore.git package/istore
-
-git clone https://github.com/kenzok8/small.git package/small
+git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages package/passwall-packages
+git clone https://github.com/Openwrt-Passwall/openwrt-passwall package/passwall-luci
+# git clone https://github.com/kenzok8/small.git package/small
 
 git clone https://github.com/whzhni1/luci-app-vnt2.git package/vnt
 
@@ -53,9 +54,7 @@ rm -f /tmp/thrid_list.txt /tmp/third_old.txt /tmp/third_new.txt
 
 # 移除 openwrt feeds 自带的核心库
 rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
-# git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages package/passwall-packages
 rm -rf feeds/luci/applications/luci-app-passwall
-# git clone https://github.com/Openwrt-Passwall/openwrt-passwall package/passwall-luci
 rm -rf feeds/luci/applications/luci-app-ssr-plus
 rm -rf feeds/luci/applications/helloworld
 rm -rf feeds/luci/applications/luci-app-openclash
