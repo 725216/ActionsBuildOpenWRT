@@ -1,4 +1,4 @@
-name: OpenWrt-ImmortalWrt-MT798x-6.6包含passwall
+name: OpenWrt-ImmortalWrt-MT798x-6.6包含ssr-plus
 
 on:
   schedule:
@@ -117,7 +117,7 @@ jobs:
           # 插件数组格式：repo;branch;check_type
           # simple: ls‑remote轻量检测；full: clone仓库获取commit
           plugin_list=(
-            "https://github.com/Openwrt-Passwall/openwrt-passwall.git;main;simple"
+            "https://github.com/fw876/helloworld.git;dev;simple"
             "https://github.com/whzhni1/luci-app-vnt2.git;main;simple"
             "https://github.com/vernesong/OpenClash.git;master;simple"
           )
@@ -383,7 +383,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag: ${{ env.BUILD_TAG }}
-          name: MT798x 6.6内核包含passwall ${{ env.BUILD_DATETIME }}
+          name: MT798x 6.6内核包含ssr-plus ${{ env.BUILD_DATETIME }}
           artifacts: |
             ${{ env.TARGET_DIR }}/*
             !${{ env.TARGET_DIR }}/packages/**/*
