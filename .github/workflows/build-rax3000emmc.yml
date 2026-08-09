@@ -126,15 +126,16 @@ jobs:
           rm -rf "${TMP_SMALL}"
 
           for item in "${plugin_list[@]}"; do
-            IFS=';' read repo_url branch check_type <<< "$item"
+            IFS=';' read -r repo_url branch check_type <<< "$item"
             echo "检测仓库: $repo_url 分支:$branch 检测模式:$check_type"
             remote_commit=""
 
             if [[ "$check_type" == "simple" ]]; then
-              # 彻底修复hash附带refs字段导致假更新问题
+              # 精准匹配分支引用refs/heads/xxx，彻底解决VNT2获取为空问题
               for retry in {1..3}; do
-                remote_commit=$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote --heads "$repo_url" "$branch" 2>/dev/null || true | awk '{print $1}' | tr -d '\r')
-                if [ -n "$remote_commit" ]; then
+                remote_commit=$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote --heads "$repo_url" 2>/dev/null \
+                  | awk -v full_ref="refs/heads/${branch}" '$2 == full_ref {print $1}' | tr -d '\r' | head -n1)
+                if [[ -n "$remote_commit" ]]; then
                   break
                 fi
                 echo "🔄 第${retry}次获取commit失败，重试..."
@@ -154,7 +155,7 @@ jobs:
               done
             fi
 
-            # 网络失败处理逻辑
+            # 网络失败处理逻辑：存在历史记录强制复用hash，插件不会消失
             if [ -z "$remote_commit" ]; then
               echo "⚠️ 网络获取commit失败: $repo_url $branch"
               if [ -f plugins_last.txt ]; then
@@ -188,7 +189,9 @@ jobs:
                 if [ -z "$new_line" ]; then
                     exist_in_list=0
                     for p in "${plugin_list[@]}"; do
-                        p_repo=${p%%;*}; p_br=$(echo "$p"|cut -d';' -f2)
+                        p_repo=${p%%;*}
+                        p_rest=${p#*;}
+                        p_br=${p_rest%%;*}
                         if [[ "$p_repo" == "$repo" && "$p_br" == "$branch" ]]; then
                             exist_in_list=1
                             break
