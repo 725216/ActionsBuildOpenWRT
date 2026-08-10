@@ -1,4 +1,4 @@
-name: OpenWrt-ImmortalWrt-MT798x-6.6包含ssr-plus
+name: OpenWrt-ImmortalWrt-MT798x-6.6包含passwall
 
 on:
   schedule:
