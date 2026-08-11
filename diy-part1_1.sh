@@ -8,7 +8,6 @@ git clone https://github.com/vernesong/OpenClash.git package/openclash
 # git clone https://github.com/linkease/istore.git package/istore
 git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages package/passwall-packages
 git clone https://github.com/Openwrt-Passwall/openwrt-passwall package/passwall-luci
-# git clone https://github.com/kenzok8/small.git package/small
 
 git clone https://github.com/whzhni1/luci-app-vnt2.git package/vnt
 
