@@ -1,4 +1,4 @@
-name: build-rax3000emmc
+name: build-rax3000emmc包含passwall
 
 on:
   schedule:
@@ -24,7 +24,7 @@ env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
   REPO_BRANCH: openwrt-24.10-6.6
   CONFIG_FILE: rax3000emmc.config
-  DIY_P1_SH: diy-part1.sh
+  DIY_P1_SH: diy-part1_1.sh
   DIY_P2_SH: diy-part2.sh
   COMPILE_THREAD: 2
   CACHE_KEY_VER: v1.3
