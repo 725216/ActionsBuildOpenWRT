@@ -5,7 +5,7 @@ on:
     - cron: 0 21 * * *
   push:
     paths:
-      - OpenWrt-immortalwrt.config
+      - rax3000emmc.config
       - files/**
   workflow_dispatch:
     inputs:
