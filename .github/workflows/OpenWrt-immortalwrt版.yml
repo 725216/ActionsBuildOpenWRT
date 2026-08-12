@@ -392,7 +392,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag: ${{ env.BUILD_TAG }}
-          name: rax3000emmc 包含ssr-plus ${{ env.BUILD_DATETIME }}
+          name: OpenWrt-ImmortalWrt包含ssr-plus ${{ env.BUILD_DATETIME }}
           artifacts: release_out/*
           generateReleaseNotes: true
           allowUpdates: true
