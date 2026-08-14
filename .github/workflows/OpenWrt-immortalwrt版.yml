@@ -282,13 +282,13 @@ jobs:
             fi
           fi
 
-          # 第三方插件更新（读取shell环境变量NEED_PLUGIN_UPDATE）
+          # 第三方插件更新
           if [ $NEED_BUILD -eq 0 ] && [ "${NEED_PLUGIN_UPDATE:-0}" -eq 1 ]; then
             echo "⚠️ 第三方插件存在变更，触发编译"
             NEED_BUILD=1
           fi
 
-          # 使用git检测仓库配置文件真实改动，消除defconfig自动变更误判
+          # 使用git检测仓库配置文件真实改动
           if [ $NEED_BUILD -eq 0 ]; then
             if [ ! -f last_commit.txt ]; then
               echo "ℹ️ 首次构建，源码快照不存在，编译一次生成快照"
@@ -402,7 +402,6 @@ jobs:
           generateReleaseNotes: true
           allowUpdates: true
 
-      # 【修改点】按后缀_ssr-plus分组，独立保留最新2个Release
       - name: Group retain latest 2 releases per workflow suffix
         if: steps.compile_firm.outputs.result == 'ok'
         uses: actions/github-script@v8
