@@ -51,7 +51,7 @@ jobs:
 
       - name: 生成编译日期标签
         run: |
-          echo "BUILD_TAG=build-$(date +%Y%m%d)_ssr-plus" >> $GITHUB_ENV
+          echo "BUILD_TAG=build-$(date +%Y%m%d)_passwall" >> $GITHUB_ENV
           echo "BUILD_DATETIME=$(date +%Y-%m-%d_%H-%M)" >> $GITHUB_ENV
         env:
           TZ: Asia/Shanghai
@@ -402,29 +402,33 @@ jobs:
           generateReleaseNotes: true
           allowUpdates: true
 
-      - name: Retain latest 5 releases, remove older releases & tags
+      # 分组清理：仅保留 _passwall 后缀最新2个Release
+      - name: Group retain latest 2 releases for passwall
         if: steps.compile_firm.outputs.result == 'ok'
         uses: actions/github-script@v8
         with:
           script: |
             const { owner, repo } = context.repo;
-            const reserveCount = 5;
-            console.log(`设置保留最新 ${reserveCount} 个正式Release`);
+            const groupSuffix = "_passwall";
+            const reserveCount = 2;
+            console.log(`分组后缀: ${groupSuffix}，每组保留最新${reserveCount}个Release`);
 
             const { data: releases } = await github.rest.repos.listReleases({
               owner, repo, per_page: 100
             });
 
+            // 过滤非草稿、按发布时间倒序
             const validReleases = releases
               .filter(item => !item.draft)
               .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
-
-            console.log(`当前正式Release总数：${validReleases.length}`);
-            const removeList = validReleases.slice(reserveCount);
+            // 只匹配当前passwall分组
+            const groupReleases = validReleases.filter(r => r.tag_name.endsWith(groupSuffix));
+            console.log(`当前passwall分组Release总数：${groupReleases.length}`);
+            const removeList = groupReleases.slice(reserveCount);
             console.log(`待删除数量：${removeList.length}`);
 
             for (const release of removeList) {
-              console.log(`开始删除 Release: ${release.tag_name}`);
+              console.log(`删除旧Release: ${release.tag_name}`);
               await github.rest.repos.deleteRelease({
                 owner, repo, release_id: release.id
               });
@@ -434,6 +438,6 @@ jobs:
                 });
                 console.log(`标签 ${release.tag_name} 删除成功`);
               } catch (err) {
-                console.log(`标签 ${release.tag_name} 删除警告：`, err.message);
+                console.warn(`标签 ${release.tag_name} 删除警告：`, err.message);
               }
             }
