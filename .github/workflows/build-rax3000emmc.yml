@@ -65,7 +65,7 @@ jobs:
       - name: 清理本地缓存
         if: github.event.inputs.clean_cache == 'true'
         run: |
-          rm -rf openwrt .ccache build.log upstream_commit.txt last_commit.txt plugins_remote.txt plugins_last.txt plugin_changed_list.txt tmp_small_check || true
+          rm -rf openwrt .ccache build.log upstream_commit.txt last_commit.txt plugins_remote.txt plugins_last.txt plugin_changed_list.txt tmp_small_check plugins_new_snap.txt || true
           echo "✅ 缓存清理完成"
 
       - name: 恢复编译缓存 dl + ccache + 插件哈希快照
@@ -79,6 +79,16 @@ jobs:
           key: mt798x-6.6-${{ env.CACHE_KEY_VER }}
           restore-keys: |
             mt798x-6.6-${{ env.CACHE_KEY_VER }}
+
+      # 新增调试步骤：查看缓存恢复后的快照文件
+      - name: 调试-检查缓存快照文件
+        run: |
+          echo "===== plugins_last.txt 状态 ====="
+          ls -la plugins_last.txt || echo "❌ 文件不存在"
+          cat plugins_last.txt || echo "文件为空"
+          echo -e "\n===== last_commit.txt 状态 ====="
+          ls -la last_commit.txt || echo "❌ 文件不存在"
+        shell: bash
 
       - name: 校验源码目录
         run: |
@@ -217,37 +227,31 @@ jobs:
                 fi
             done < plugins_last.txt
 
-            # ========== 已修改部分：新增插件直接触发编译 + 打印hash ==========
+            # 【修改】首次新增插件：本次不触发编译，仅记录快照，下次更新才编译
             while IFS= read -r line; do
               repo=$(echo "$line"|cut -d';' -f1)
               branch=$(echo "$line"|cut -d';' -f2)
               new_hash=$(echo "$line"|cut -d';' -f3)
               if ! grep -q "^${repo};${branch};" plugins_last.txt; then
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo "✅【首次新增插件】$repo 分支:$branch，触发编译"
+                echo "ℹ️【首次新增插件初始化】$repo 分支:$branch，本次不触发编译"
                 echo "初始旧HASH: 不存在(首次初始化)"
                 echo "远程最新HASH: $new_hash"
+                echo "下次插件更新才会触发编译"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                NEED_PLUGIN_UPDATE=1
-                echo "${repo};${branch};FIRST_ADD_TRIGGER->${new_hash}" >> plugin_changed_list.txt
+                echo "${repo};${branch};FIRST_INIT->${new_hash}" >> plugin_changed_list.txt
               fi
             done < plugins_remote.txt
-            # ==============================================================
 
             if [ $NEED_PLUGIN_UPDATE -eq 0 ]; then
               echo "✅ 所有插件无版本更新"
             fi
-            # --------修复cp同文件报错--------
-            if ! cmp -s plugins_remote.txt plugins_last.txt;then
-              cp plugins_remote.txt plugins_last.txt
-            fi
           else
             # 第一次运行：初始化快照
             echo "ℹ️ 首次运行，生成初始插件哈希快照，本次插件无更新判定"
-            cp plugins_remote.txt plugins_last.txt
-            NEED_PLUGIN_UPDATE=0
           fi
-
+          # 临时写入新快照，不覆盖正式plugins_last.txt
+          cp plugins_remote.txt plugins_new_snap.txt
           echo "NEED_PLUGIN_UPDATE=${NEED_PLUGIN_UPDATE}" >> $GITHUB_ENV
 
       - name: 执行 diy-part1_1.sh
@@ -340,10 +344,16 @@ jobs:
           echo "result=${RESULT}" >> $GITHUB_OUTPUT
           echo "BOARD=${BOARD}" >> $GITHUB_OUTPUT
 
+      # 仅编译成功时，更新上游commit + 插件正式快照（核心修复）
       - name: 更新缓存快照
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
           cp upstream_commit.txt last_commit.txt
+          # 替换正式插件快照
+          if [ -f plugins_new_snap.txt ]; then
+            cp plugins_new_snap.txt plugins_last.txt
+            echo "✅ 插件哈希快照已更新"
+          fi
           echo "✅ 快照已更新存入缓存"
 
       - name: 上传插件变更清单
@@ -387,20 +397,24 @@ jobs:
           # 复制固件bin、manifest
           find ${{ env.TARGET_DIR }} -maxdepth 1 -type f \( -name "*.bin" -o -name "*.manifest" \) -exec cp {} release_out/ \;
           # 复制编译生成的config.buildinfo文件
-          cp openwrt/bin/targets/mediatek/filogic/config.buildinfo release_out/
+          cp ${{ env.TARGET_DIR }}/config.buildinfo release_out/
+          echo "==== release_out 文件列表 ===="
           ls -la release_out
 
       - name: 创建Release发布
         if: steps.compile_firm.outputs.result == 'ok'
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@v1.14.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag: ${{ env.BUILD_TAG }}
           name: rax3000emmc 包含passwall ${{ env.BUILD_DATETIME }}
-          artifacts: release_out/*
+          artifacts: release_out/**/*
           generateReleaseNotes: true
           allowUpdates: true
+          removeArtifacts: true
+          replacesArtifacts: true
+          skipIfReleaseExists: false
 
       # 分组清理：仅保留 _passwall 后缀最新2个Release
       - name: Group retain latest 2 releases for passwall
