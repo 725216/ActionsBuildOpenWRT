@@ -251,7 +251,8 @@ jobs:
             echo "ℹ️ 首次运行，生成初始插件哈希快照，本次插件无更新判定"
           fi
           # 临时写入新快照，不覆盖正式plugins_last.txt
-          cp plugins_remote.txt plugins_new_snap.txt
+          cp -f plugins_remote.txt plugins_new_snap.txt
+          sync
           echo "NEED_PLUGIN_UPDATE=${NEED_PLUGIN_UPDATE}" >> $GITHUB_ENV
 
       - name: 执行 diy-part1_1.sh
@@ -348,10 +349,12 @@ jobs:
       - name: 更新缓存快照
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
-          cp upstream_commit.txt last_commit.txt
+          cp -f upstream_commit.txt last_commit.txt
+          sync
           # 替换正式插件快照
           if [ -f plugins_new_snap.txt ]; then
-            cp plugins_new_snap.txt plugins_last.txt
+            cp -f plugins_new_snap.txt plugins_last.txt
+            sync
             echo "✅ 插件哈希快照已更新"
           fi
           echo "✅ 快照已更新存入缓存"
