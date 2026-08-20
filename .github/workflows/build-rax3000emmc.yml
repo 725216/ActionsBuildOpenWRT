@@ -27,7 +27,7 @@ env:
   DIY_P1_SH: diy-part1_1.sh
   DIY_P2_SH: diy-part2.sh
   COMPILE_THREAD: 2
-  CACHE_KEY_VER: v1.3
+  CACHE_KEY_VER: v2.3
   TZ: Asia/Shanghai
   TARGET_DIR: openwrt/bin/targets/mediatek/filogic
 
