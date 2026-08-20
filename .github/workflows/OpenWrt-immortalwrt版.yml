@@ -113,6 +113,13 @@ jobs:
           > plugin_changed_list.txt
           NEED_PLUGIN_UPDATE=0
 
+          # =========调试快照文件=========
+          echo "====调试快照文件===="
+          ls -la plugins_last.txt || echo "plugins_last.txt 文件不存在！缓存没有恢复"
+          cat plugins_last.txt || true
+          echo "===================="
+          # =============================
+
           # 插件数组格式：repo;branch;check_type
           # simple: ls‑remote轻量检测；full: clone仓库获取commit
           plugin_list=(
@@ -239,12 +246,15 @@ jobs:
             fi
             # --------修复cp同文件报错--------
             if ! cmp -s plugins_remote.txt plugins_last.txt;then
-              cp plugins_remote.txt plugins_last.txt
+              echo "📝 更新插件哈希快照 plugins_last.txt"
+              cp -f plugins_remote.txt plugins_last.txt
+              sync
             fi
           else
             # 第一次运行：初始化快照
             echo "ℹ️ 首次运行，生成初始插件哈希快照，本次插件无更新判定"
-            cp plugins_remote.txt plugins_last.txt
+            cp -f plugins_remote.txt plugins_last.txt
+            sync
             NEED_PLUGIN_UPDATE=0
           fi
 
@@ -343,7 +353,8 @@ jobs:
       - name: 更新缓存快照
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
-          cp upstream_commit.txt last_commit.txt
+          cp -f upstream_commit.txt last_commit.txt
+          sync
           echo "✅ 快照已更新存入缓存"
 
       - name: 上传插件变更清单
