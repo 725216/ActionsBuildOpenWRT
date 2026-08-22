@@ -311,6 +311,16 @@ jobs:
 
           echo "NEED_BUILD=${NEED_BUILD}" >> $GITHUB_ENV
 
+      - name: 同步源码快照(不编译也执行，仅用于cache比对)
+        run: |
+          if [ -f upstream_commit.txt ]; then
+            if [ ! -f last_commit.txt ] || ! cmp -s upstream_commit.txt last_commit.txt;then
+              cp -f upstream_commit.txt last_commit.txt
+              sync
+              echo "ℹ️ 更新源码last_commit.txt快照"
+            fi
+          fi
+
       - name: 预下载源码包
         if: env.NEED_BUILD == '1'
         run: |
