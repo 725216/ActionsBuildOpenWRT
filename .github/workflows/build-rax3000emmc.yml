@@ -80,7 +80,6 @@ jobs:
           restore-keys: |
             mt798x-6.6-${{ env.CACHE_KEY_VER }}
 
-      # 新增调试步骤：查看缓存恢复后的快照文件
       - name: 调试-检查缓存快照文件
         run: |
           echo "===== plugins_last.txt 状态 ====="
@@ -123,8 +122,6 @@ jobs:
           > plugin_changed_list.txt
           NEED_PLUGIN_UPDATE=0
 
-          # 插件数组格式：repo;branch;check_type
-          # simple: ls‑remote轻量检测；full: clone仓库获取commit
           plugin_list=(
             "https://github.com/whzhni1/luci-app-vnt2.git;main;simple"
             "https://github.com/vernesong/OpenClash.git;master;simple"
@@ -140,7 +137,6 @@ jobs:
             remote_commit=""
 
             if [[ "$check_type" == "simple" ]]; then
-              # 严格仅提取40位Commit Hash，彻底过滤refs/heads/*后缀
               for retry in {1..3}; do
                 remote_commit=$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote --heads "$repo_url" 2>/dev/null \
                   | awk -v full_ref="refs/heads/${branch}" '$2 == full_ref {print $1}' | tr -d '\r' | head -n1)
@@ -163,7 +159,6 @@ jobs:
               done
             fi
 
-            # 网络失败处理逻辑
             if [ -z "$remote_commit" ]; then
               echo "⚠️ 网络获取commit失败: $repo_url $branch"
               if [ -f plugins_last.txt ]; then
@@ -185,12 +180,10 @@ jobs:
 
           rm -rf "${TMP_SMALL}"
 
-          # 对比旧快照，查找更新/移除插件
           if [ -f plugins_last.txt ]; then
             while IFS= read -r line; do
                 repo=$(echo "$line" | cut -d';' -f1)
                 branch=$(echo "$line" | cut -d';' -f2)
-                # 关键修复：自动剔除旧HASH里refs/heads多余字符，只保留哈希
                 old_hash=$(echo "$line" | cut -d';' -f3 | awk '{print $1}')
                 new_line=$(grep "^${repo};${branch};" plugins_remote.txt || true)
 
@@ -227,7 +220,6 @@ jobs:
                 fi
             done < plugins_last.txt
 
-            # 【修改】首次新增插件：本次不触发编译，仅记录快照，下次更新才编译
             while IFS= read -r line; do
               repo=$(echo "$line"|cut -d';' -f1)
               branch=$(echo "$line"|cut -d';' -f2)
@@ -247,10 +239,9 @@ jobs:
               echo "✅ 所有插件无版本更新"
             fi
           else
-            # 第一次运行：初始化快照
             echo "ℹ️ 首次运行，生成初始插件哈希快照，本次插件无更新判定"
           fi
-          # 临时写入新快照，不覆盖正式plugins_last.txt
+
           cp -f plugins_remote.txt plugins_new_snap.txt
           sync
           echo "NEED_PLUGIN_UPDATE=${NEED_PLUGIN_UPDATE}" >> $GITHUB_ENV
@@ -279,7 +270,6 @@ jobs:
             NEED_BUILD=1
           fi
 
-          # 上游源码更新对比
           if [ $NEED_BUILD -eq 0 ] && [ -f last_commit.txt ] && [ -f upstream_commit.txt ]; then
             if ! diff -q last_commit.txt upstream_commit.txt >/dev/null; then
               echo "⚠️ 上游源码更新，触发编译"
@@ -287,13 +277,11 @@ jobs:
             fi
           fi
 
-          # 第三方插件更新（读取shell环境变量NEED_PLUGIN_UPDATE）
           if [ $NEED_BUILD -eq 0 ] && [ "${NEED_PLUGIN_UPDATE:-0}" -eq 1 ]; then
             echo "⚠️ 第三方插件存在变更，触发编译"
             NEED_BUILD=1
           fi
 
-          # 使用git检测仓库配置文件真实改动，消除defconfig自动变更误判
           if [ $NEED_BUILD -eq 0 ]; then
             if [ ! -f last_commit.txt ]; then
               echo "ℹ️ 首次构建，源码快照不存在，编译一次生成快照"
@@ -355,13 +343,11 @@ jobs:
           echo "result=${RESULT}" >> $GITHUB_OUTPUT
           echo "BOARD=${BOARD}" >> $GITHUB_OUTPUT
 
-      # 仅编译成功时，更新上游commit + 插件正式快照（核心修复）
       - name: 更新缓存快照
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
           cp -f upstream_commit.txt last_commit.txt
           sync
-          # 替换正式插件快照
           if [ -f plugins_new_snap.txt ]; then
             cp -f plugins_new_snap.txt plugins_last.txt
             sync
@@ -407,9 +393,7 @@ jobs:
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
           mkdir -p release_out
-          # 复制固件bin、manifest
           find ${{ env.TARGET_DIR }} -maxdepth 1 -type f \( -name "*.bin" -o -name "*.manifest" \) -exec cp {} release_out/ \;
-          # 复制编译生成的config.buildinfo文件
           cp ${{ env.TARGET_DIR }}/config.buildinfo release_out/
           echo "==== release_out 文件列表 ===="
           ls -la release_out
@@ -429,7 +413,6 @@ jobs:
           replacesArtifacts: true
           skipIfReleaseExists: false
 
-      # 分组清理：仅保留 _passwall 后缀最新2个Release
       - name: Group retain latest 2 releases for passwall
         if: steps.compile_firm.outputs.result == 'ok'
         uses: actions/github-script@v8
@@ -444,11 +427,9 @@ jobs:
               owner, repo, per_page: 100
             });
 
-            // 过滤非草稿、按发布时间倒序
             const validReleases = releases
               .filter(item => !item.draft)
               .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
-            // 只匹配当前passwall分组
             const groupReleases = validReleases.filter(r => r.tag_name.endsWith(groupSuffix));
             console.log(`当前passwall分组Release总数：${groupReleases.length}`);
             const removeList = groupReleases.slice(reserveCount);
