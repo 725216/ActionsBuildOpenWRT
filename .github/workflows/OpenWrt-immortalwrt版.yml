@@ -27,7 +27,7 @@ env:
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   COMPILE_THREAD: 2
-  CACHE_KEY_VER: v1.3
+  CACHE_KEY_VER: v1.4
   TZ: Asia/Shanghai
   TARGET_DIR: openwrt/bin/targets/mediatek/filogic
 
@@ -80,6 +80,15 @@ jobs:
           restore-keys: |
             mt798x-6.6-${{ env.CACHE_KEY_VER }}
 
+      - name: 调试‑检查缓存快照文件
+        run: |
+          echo "===== plugins_last.txt 状态 ====="
+          ls -la plugins_last.txt || echo "❌ 文件不存在"
+          cat plugins_last.txt || echo "文件为空"
+          echo -e "\n===== last_commit.txt 状态 ====="
+          ls -la last_commit.txt || echo "❌ 文件不存在"
+        shell: bash
+
       - name: 校验源码目录
         run: |
           if [ -d openwrt ]; then
@@ -112,12 +121,6 @@ jobs:
           > plugins_remote.txt
           > plugin_changed_list.txt
           NEED_PLUGIN_UPDATE=0
-
-          # =========调试快照文件=========
-          echo "====调试快照文件===="
-          ls -la plugins_last.txt || echo "plugins_last.txt 文件不存在！缓存没有恢复"
-          cat plugins_last.txt || true
-          echo "===================="
 
           plugin_list=(
             "https://github.com/whzhni1/luci-app-vnt2.git;main;simple"
@@ -175,8 +178,6 @@ jobs:
           done
 
           rm -rf "${TMP_SMALL}"
-          # 重命名临时快照，本阶段只写临时文件，不修改plugins_last.txt
-          mv -f plugins_remote.txt plugins_new_snap.txt
 
           # 对比旧快照，查找更新/移除插件
           if [ -f plugins_last.txt ]; then
@@ -184,7 +185,7 @@ jobs:
                 repo=$(echo "$line" | cut -d';' -f1)
                 branch=$(echo "$line" | cut -d';' -f2)
                 old_hash=$(echo "$line" | cut -d';' -f3 | awk '{print $1}')
-                new_line=$(grep "^${repo};${branch};" plugins_new_snap.txt || true)
+                new_line=$(grep "^${repo};${branch};" plugins_remote.txt || true)
 
                 if [ -z "$new_line" ]; then
                     exist_in_list=0
@@ -233,16 +234,22 @@ jobs:
                 NEED_PLUGIN_UPDATE=1
                 echo "${repo};${branch};FIRST_ADD_TRIGGER->${new_hash}" >> plugin_changed_list.txt
               fi
-            done < plugins_new_snap.txt
+            done < plugins_remote.txt
 
             if [ $NEED_PLUGIN_UPDATE -eq 0 ]; then
               echo "✅ 所有插件无版本更新"
             fi
           else
-            # 没有旧快照，不写入plugins_last.txt，等待编译成功固化
-            echo "ℹ️ 首次运行，无旧插件快照，等待编译成功后生成"
+            echo "ℹ️ 首次运行，无旧插件快照"
             NEED_PLUGIN_UPDATE=1
           fi
+
+          # ✅核心修复：检测完毕立刻写入最新快照，无论是否编译
+          cp -f plugins_remote.txt plugins_last.txt
+          sync
+          echo "==== 写入后 plugins_last.txt 内容 ===="
+          cat plugins_last.txt
+          echo "======================================"
 
           echo "NEED_PLUGIN_UPDATE=${NEED_PLUGIN_UPDATE}" >> $GITHUB_ENV
 
@@ -302,16 +309,6 @@ jobs:
 
           echo "NEED_BUILD=${NEED_BUILD}" >> $GITHUB_ENV
 
-      - name: 同步源码快照(不编译也执行，仅用于cache比对)
-        run: |
-          if [ -f upstream_commit.txt ]; then
-            if [ ! -f last_commit.txt ] || ! cmp -s upstream_commit.txt last_commit.txt;then
-              cp -f upstream_commit.txt last_commit.txt
-              sync
-              echo "ℹ️ 更新源码last_commit.txt快照"
-            fi
-          fi
-
       - name: 预下载源码包
         if: env.NEED_BUILD == '1'
         run: |
@@ -346,22 +343,12 @@ jobs:
           echo "result=${RESULT}" >> $GITHUB_OUTPUT
           echo "BOARD=${BOARD}" >> $GITHUB_OUTPUT
 
-      - name: 更新缓存快照
+      - name: 更新源码快照（仅编译成功更新last_commit.txt）
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
           cp -f upstream_commit.txt last_commit.txt
           sync
-          if [ -f plugins_new_snap.txt ]; then
-            if [ ! -f plugins_last.txt ] || ! cmp -s plugins_new_snap.txt plugins_last.txt;then
-              cp -f plugins_new_snap.txt plugins_last.txt
-              echo "✅ 固化插件快照到plugins_last.txt"
-            else
-              echo "ℹ️ 插件hash无变化，不更新快照"
-            fi
-            sync
-          fi
-          ls -l last_commit.txt plugins_last.txt
-          echo "✅ 快照已更新存入缓存"
+          echo "✅ 源码快照 last_commit.txt 更新完成"
 
       - name: 上传插件变更清单
         uses: actions/upload-artifact@v5
