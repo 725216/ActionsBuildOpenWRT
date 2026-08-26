@@ -27,7 +27,7 @@ env:
   DIY_P1_SH: diy-part1_1.sh
   DIY_P2_SH: diy-part2.sh
   COMPILE_THREAD: 2
-  CACHE_KEY_VER: v2.3
+  CACHE_KEY_VER: v2.4
   TZ: Asia/Shanghai
   TARGET_DIR: openwrt/bin/targets/mediatek/filogic
 
@@ -65,7 +65,7 @@ jobs:
       - name: 清理本地缓存
         if: github.event.inputs.clean_cache == 'true'
         run: |
-          rm -rf openwrt .ccache build.log upstream_commit.txt last_commit.txt plugins_remote.txt plugins_last.txt plugin_changed_list.txt tmp_small_check plugins_new_snap.txt || true
+          rm -rf openwrt .ccache build.log upstream_commit.txt last_commit.txt plugins_remote.txt plugins_last.txt plugin_changed_list.txt tmp_small_check || true
           echo "✅ 缓存清理完成"
 
       - name: 恢复编译缓存 dl + ccache + 插件哈希快照
@@ -242,8 +242,13 @@ jobs:
             echo "ℹ️ 首次运行，生成初始插件哈希快照，本次插件无更新判定"
           fi
 
-          cp -f plugins_remote.txt plugins_new_snap.txt
+          # ==========关键修复：检测完插件立刻更新plugins_last.txt，无论是否编译==========
+          cp -f plugins_remote.txt plugins_last.txt
           sync
+          echo "==== 写入后 plugins_last.txt 内容 ===="
+          cat plugins_last.txt
+          echo "======================================"
+
           echo "NEED_PLUGIN_UPDATE=${NEED_PLUGIN_UPDATE}" >> $GITHUB_ENV
 
       - name: 执行 diy-part1_1.sh
@@ -299,16 +304,6 @@ jobs:
 
           echo "NEED_BUILD=${NEED_BUILD}" >> $GITHUB_ENV
 
-      - name: 同步源码快照(不编译也执行，仅用于cache比对)
-        run: |
-          if [ -f upstream_commit.txt ]; then
-            if [ ! -f last_commit.txt ] || ! cmp -s upstream_commit.txt last_commit.txt;then
-              cp -f upstream_commit.txt last_commit.txt
-              sync
-              echo "ℹ️ 更新源码last_commit.txt快照"
-            fi
-          fi
-
       - name: 预下载源码包
         if: env.NEED_BUILD == '1'
         run: |
@@ -343,17 +338,12 @@ jobs:
           echo "result=${RESULT}" >> $GITHUB_OUTPUT
           echo "BOARD=${BOARD}" >> $GITHUB_OUTPUT
 
-      - name: 更新缓存快照
+      - name: 更新源码快照（仅编译成功才更新last_commit.txt）
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
           cp -f upstream_commit.txt last_commit.txt
           sync
-          if [ -f plugins_new_snap.txt ]; then
-            cp -f plugins_new_snap.txt plugins_last.txt
-            sync
-            echo "✅ 插件哈希快照已更新"
-          fi
-          echo "✅ 快照已更新存入缓存"
+          echo "✅ 源码快照 last_commit.txt 更新完成"
 
       - name: 上传插件变更清单
         uses: actions/upload-artifact@v5
