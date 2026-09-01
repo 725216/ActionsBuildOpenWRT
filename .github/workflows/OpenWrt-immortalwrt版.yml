@@ -421,7 +421,7 @@ jobs:
               owner, repo, per_page: 100
             });
 
-            // 过滤非草稿、按发布时间倒序
+            // 过滤非草稿按发布时间倒序
             const validReleases = releases
               .filter(item => !item.draft)
               .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
