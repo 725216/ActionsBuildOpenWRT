@@ -80,7 +80,7 @@ jobs:
           restore-keys: |
             mt798x-6.6-${{ env.CACHE_KEY_VER }}
 
-      - name: 调试-检查缓存快照文件
+      - name: 调试‑检查缓存快照文件
         run: |
           echo "===== plugins_last.txt 状态 ====="
           ls -la plugins_last.txt || echo "❌ 文件不存在"
