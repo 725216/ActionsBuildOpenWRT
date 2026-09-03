@@ -182,6 +182,7 @@ jobs:
 
           if [ -f plugins_last.txt ]; then
             while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
                 repo=$(echo "$line" | cut -d';' -f1)
                 branch=$(echo "$line" | cut -d';' -f2)
                 old_hash=$(echo "$line" | cut -d';' -f3 | awk '{print $1}')
@@ -221,6 +222,7 @@ jobs:
             done < plugins_last.txt
 
             while IFS= read -r line; do
+              [[ -z "$line" ]] && continue
               repo=$(echo "$line"|cut -d';' -f1)
               branch=$(echo "$line"|cut -d';' -f2)
               new_hash=$(echo "$line"|cut -d';' -f3)
