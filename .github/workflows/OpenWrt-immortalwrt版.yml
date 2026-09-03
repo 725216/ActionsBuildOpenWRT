@@ -65,7 +65,7 @@ jobs:
       - name: 清理本地缓存
         if: github.event.inputs.clean_cache == 'true'
         run: |
-          rm -rf openwrt .ccache build.log upstream_commit.txt last_commit.txt plugins_remote.txt plugins_last.txt plugin_changed_list.txt plugins_new_snap.txt tmp_small_check || true
+          rm -rf openwrt .ccache build.log upstream_commit.txt last_commit.txt plugins_remote.txt plugins_last.txt plugin_changed_list.txt tmp_small_check || true
           echo "✅ 缓存清理完成"
 
       - name: 恢复编译缓存 dl + ccache + 插件哈希快照
@@ -182,6 +182,7 @@ jobs:
           # 对比旧快照，查找更新/移除插件
           if [ -f plugins_last.txt ]; then
             while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
                 repo=$(echo "$line" | cut -d';' -f1)
                 branch=$(echo "$line" | cut -d';' -f2)
                 old_hash=$(echo "$line" | cut -d';' -f3 | awk '{print $1}')
@@ -222,6 +223,7 @@ jobs:
 
             # 新增插件判断
             while IFS= read -r line; do
+              [[ -z "$line" ]] && continue
               repo=$(echo "$line"|cut -d';' -f1)
               branch=$(echo "$line"|cut -d';' -f2)
               new_hash=$(echo "$line"|cut -d';' -f3)
