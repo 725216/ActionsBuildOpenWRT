@@ -244,13 +244,7 @@ jobs:
             echo "ℹ️ 首次运行，生成初始插件哈希快照，本次插件无更新判定"
           fi
 
-          # ==========关键修复：检测完插件立刻更新plugins_last.txt，无论是否编译==========
-          cp -f plugins_remote.txt plugins_last.txt
-          sync
-          echo "==== 写入后 plugins_last.txt 内容 ===="
-          cat plugins_last.txt
-          echo "======================================"
-
+          # 只输出环境变量，不再修改plugins_last.txt，移到后面步骤处理
           echo "NEED_PLUGIN_UPDATE=${NEED_PLUGIN_UPDATE}" >> $GITHUB_ENV
 
       - name: 执行 diy-part1_1.sh
@@ -306,6 +300,16 @@ jobs:
 
           echo "NEED_BUILD=${NEED_BUILD}" >> $GITHUB_ENV
 
+      # ==== 新增：无需编译退出时，更新插件快照，让cache保存最新plugins_last.txt ====
+      - name: 无需编译‑更新插件哈希快照并退出
+        if: env.NEED_BUILD == '0'
+        run: |
+          cp -f plugins_remote.txt plugins_last.txt
+          sync
+          echo "==== 无需编译，更新plugins_last.txt ===="
+          cat plugins_last.txt
+          echo "✅ 快照已刷新，job正常结束，cache会保存新版本"
+
       - name: 预下载源码包
         if: env.NEED_BUILD == '1'
         run: |
@@ -340,12 +344,15 @@ jobs:
           echo "result=${RESULT}" >> $GITHUB_OUTPUT
           echo "BOARD=${BOARD}" >> $GITHUB_OUTPUT
 
-      - name: 更新源码快照（仅编译成功才更新last_commit.txt）
+      - name: 更新源码&插件快照（仅编译成功才更新）
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
           cp -f upstream_commit.txt last_commit.txt
+          cp -f plugins_remote.txt plugins_last.txt
           sync
-          echo "✅ 源码快照 last_commit.txt 更新完成"
+          echo "✅ last_commit.txt 更新完成"
+          echo "✅ plugins_last.txt 更新完成"
+          cat plugins_last.txt
 
       - name: 上传插件变更清单
         uses: actions/upload-artifact@v5
