@@ -123,7 +123,6 @@ jobs:
           NEED_PLUGIN_UPDATE=0
 
           plugin_list=(
-            "https://github.com/whzhni1/luci-app-vnt2.git;main;simple"
             "https://github.com/vernesong/OpenClash.git;master;simple"
             "https://github.com/fw876/helloworld.git;dev;simple"
           )
