@@ -134,12 +134,15 @@ jobs:
             IFS=';' read -r repo_url branch check_type <<< "$item"
             echo "检测仓库: $repo_url 分支:$branch 检测模式:$check_type"
             remote_commit=""
+            remote_tree=""
 
             if [[ "$check_type" == "simple" ]]; then
               for retry in {1..3}; do
                 remote_commit=$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote --heads "$repo_url" 2>/dev/null \
                   | awk -v full_ref="refs/heads/${branch}" '$2 == full_ref {print $1}' | tr -d '\r\n' | head -n1)
                 if [[ -n "$remote_commit" ]]; then
+                  # 获取该commit对应的tree hash
+                  remote_tree=$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote "$repo_url" "${remote_commit}^{tree}" 2>/dev/null | awk '{print $1}')
                   break
                 fi
                 echo "🔄 第${retry}次获取commit失败，重试..."
@@ -151,6 +154,7 @@ jobs:
                 git clone --depth=1 -b "${branch}" "${repo_url}" "${TMP_SMALL}" 2>/dev/null || true
                 if [ -d "${TMP_SMALL}/.git" ]; then
                   remote_commit=$(cd "${TMP_SMALL}"; git rev-parse HEAD | tr -d '\r\n')
+                  remote_tree=$(cd "${TMP_SMALL}"; git rev-parse HEAD^{tree} | tr -d '\r\n')
                   break
                 fi
                 echo "🔄 仓库clone失败，第${retry}次重试..."
@@ -163,17 +167,19 @@ jobs:
               if [ -f plugins_last.txt ]; then
                   old_line=$(grep "^${repo_url};${branch};" plugins_last.txt || true)
                   if [ -n "$old_line" ]; then
-                      old_hash=$(echo "$old_line" | cut -d';' -f3 | awk '{print $1}')
-                      remote_commit=${old_hash}
-                      echo "ℹ️ 复用上一轮快照commit: ${remote_commit}"
-                      echo "${repo_url};${branch};${remote_commit}" >> plugins_remote.txt
+                      old_commit=$(echo "$old_line" | cut -d';' -f3 | awk '{print $1}')
+                      old_tree=$(echo "$old_line" | cut -d';' -f4 | awk '{print $1}')
+                      remote_commit=${old_commit}
+                      remote_tree=${old_tree}
+                      echo "ℹ️ 复用上一轮快照commit+tree: ${remote_commit}"
+                      echo "${repo_url};${branch};${remote_commit};${remote_tree}" >> plugins_remote.txt
                       continue
                   fi
               fi
               echo "🛑 首次拉取网络异常，跳过插件更新检测 $repo_url"
               continue
             fi
-            echo "${repo_url};${branch};${remote_commit}" >> plugins_remote.txt
+            echo "${repo_url};${branch};${remote_commit};${remote_tree}" >> plugins_remote.txt
           done
 
           rm -rf "${TMP_SMALL}"
@@ -185,6 +191,7 @@ jobs:
                 repo=$(echo "$line" | cut -d';' -f1)
                 branch=$(echo "$line" | cut -d';' -f2)
                 old_hash=$(echo "$line" | cut -d';' -f3 | awk '{print $1}')
+                old_tree=$(echo "$line" | cut -d';' -f4 | awk '{print $1}')
                 new_line=$(grep "^${repo};${branch};" plugins_remote.txt || true)
 
                 if [ -z "$new_line" ]; then
@@ -208,15 +215,21 @@ jobs:
                     continue
                 fi
                 new_hash=$(echo "$new_line" | cut -d';' -f3)
-                if [[ "$old_hash" != "$new_hash" ]]; then
+                new_tree=$(echo "$new_line" | cut -d';' -f4)
+                # 核心判断：tree hash不一致=源码真改动；tree相同仅commit变化（rebase/强推）不触发
+                if [[ "$old_tree" != "$new_tree" ]]; then
                   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                  echo "✅【插件检测到更新】$repo"
+                  echo "✅【插件检测到真实代码更新】$repo"
                   echo "分支: $branch"
-                  echo "旧HASH: $old_hash"
-                  echo "新HASH: $new_hash"
+                  echo "旧COMMIT: $old_hash"
+                  echo "新COMMIT: $new_hash"
+                  echo "旧TREE: $old_tree"
+                  echo "新TREE: $new_tree"
                   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                   NEED_PLUGIN_UPDATE=1
                   echo "${repo};${branch};${old_hash}->${new_hash}" >> plugin_changed_list.txt
+                else
+                  echo "ℹ️ $repo 仅commit哈希变动，Tree不变，判定为rebase，不触发编译"
                 fi
             done < plugins_last.txt
 
@@ -226,11 +239,13 @@ jobs:
               repo=$(echo "$line"|cut -d';' -f1)
               branch=$(echo "$line"|cut -d';' -f2)
               new_hash=$(echo "$line"|cut -d';' -f3)
+              new_tree=$(echo "$line"|cut -d';' -f4)
               if ! grep -q "^${repo};${branch};" plugins_last.txt; then
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo "✅【首次新增插件】$repo 分支:$branch，触发编译"
                 echo "初始旧HASH: 不存在(首次初始化)"
-                echo "远程最新HASH: $new_hash"
+                echo "远程最新COMMIT: $new_hash"
+                echo "远程最新TREE: $new_tree"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 NEED_PLUGIN_UPDATE=1
                 echo "${repo};${branch};FIRST_ADD_TRIGGER->${new_hash}" >> plugin_changed_list.txt
@@ -245,7 +260,6 @@ jobs:
             NEED_PLUGIN_UPDATE=1
           fi
 
-          # 移除此处cp，放到后续步骤处理
           echo "NEED_PLUGIN_UPDATE=${NEED_PLUGIN_UPDATE}" >> $GITHUB_ENV
 
       - name: 执行 diy-part1.sh
