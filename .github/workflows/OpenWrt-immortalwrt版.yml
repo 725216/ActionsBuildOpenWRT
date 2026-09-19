@@ -27,7 +27,7 @@ env:
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   COMPILE_THREAD: 2
-  CACHE_KEY_VER: v1.4
+  CACHE_KEY_VER: v1.5
   TZ: Asia/Shanghai
   TARGET_DIR: openwrt/bin/targets/mediatek/filogic
 
@@ -60,7 +60,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential libncurses-dev gawk flex bison quilt libssl-dev xsltproc libxml2-utils \
-          zstd device-tree-compiler python3 python3-ply python3-docutils libelf-dev ccache
+          zstd device-tree-compiler python3 python3-ply python3-docutils libelf-dev ccache git
 
       - name: 清理本地缓存
         if: github.event.inputs.clean_cache == 'true'
@@ -76,6 +76,7 @@ jobs:
             .ccache
             last_commit.txt
             plugins_last.txt
+            plugins_remote.txt
           key: mt798x-6.6-${{ env.CACHE_KEY_VER }}
           restore-keys: |
             mt798x-6.6-${{ env.CACHE_KEY_VER }}
@@ -162,8 +163,8 @@ jobs:
               done
             fi
 
-            if [ -z "$remote_commit" ]; then
-              echo "⚠️ 网络获取commit失败: $repo_url $branch"
+            if [ -z "$remote_commit" ] || [ -z "$remote_tree" ]; then
+              echo "⚠️ 网络获取commit/tree失败: $repo_url $branch"
               if [ -f plugins_last.txt ]; then
                   old_line=$(grep "^${repo_url};${branch};" plugins_last.txt || true)
                   if [ -n "$old_line" ]; then
@@ -171,7 +172,7 @@ jobs:
                       old_tree=$(echo "$old_line" | cut -d';' -f4 | awk '{print $1}')
                       remote_commit=${old_commit}
                       remote_tree=${old_tree}
-                      echo "ℹ️ 复用上一轮快照commit+tree: ${remote_commit}"
+                      echo "ℹ️ 复用上一轮快照commit+tree"
                       echo "${repo_url};${branch};${remote_commit};${remote_tree}" >> plugins_remote.txt
                       continue
                   fi
