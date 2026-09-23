@@ -156,10 +156,12 @@ jobs:
 
               if [[ -z "$remote_commit" || -z "$remote_tree" ]]; then
                 echo "ℹ️ git ls‑remote失败，切换GitHub API备用获取"
-                api_out=$(curl -s -m 12 "https://api.github.com/repos/${repo_path}/git/refs/heads/${branch}")
-                if [[ -n "$api_out" ]]; then
+                api_out=$(curl -s -m 12 --connect-timeout 8 "https://api.github.com/repos/${repo_path}/git/refs/heads/${branch}")
+                if [[ -n "${api_out}" && "${api_out}" != "{}" && "${api_out}" != *"message"* ]]; then
                   remote_commit=$(echo "$api_out" | awk -F'"' '/"sha"/{print $4;exit}')
                   remote_tree=$(echo "$api_out" | awk -F'"' '/"tree"/{getline;print $4;exit}')
+                else
+                  echo "⚠️ GitHub API返回空/报错，放弃API获取"
                 fi
               fi
 
@@ -186,12 +188,12 @@ jobs:
                       old_tree=$(echo "$old_line" | cut -d';' -f4 | awk '{print $1}')
                       remote_commit=${old_commit}
                       remote_tree=${old_tree}
-                      echo "ℹ️ 复用上一轮快照commit+tree"
+                      echo "ℹ️ 复用上一轮快照commit+tree，本次不触发编译"
                       echo "${repo_url};${branch};${remote_commit};${remote_tree}" >> plugins_remote.txt
                       continue
                   fi
               fi
-              echo "🚨 首次拉取网络异常，保守策略：强制触发编译 $repo_url"
+              echo "🚨 无历史快照，网络异常，保守策略：强制触发编译 $repo_url"
               NEED_PLUGIN_UPDATE=1
               continue
             fi
@@ -335,7 +337,7 @@ jobs:
           sync
           echo "==== 无需编译，更新plugins_last.txt ===="
           cat plugins_last.txt
-          echo "✅ 快照已刷新，job正常结束，cache会保存新版本"
+          echo "✅ 快照已刷新，job正常结束，cache保存新版本"
 
       - name: 预下载源码包
         if: env.NEED_BUILD == '1'
@@ -371,7 +373,7 @@ jobs:
           echo "result=${RESULT}" >> $GITHUB_OUTPUT
           echo "BOARD=${BOARD}" >> $GITHUB_OUTPUT
 
-      - name: 更新源码&插件快照（仅编译成功更新）
+      - name: 更新源码&插件快照（仅编译成功才更新）
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
           cp -f upstream_commit.txt last_commit.txt
@@ -420,22 +422,26 @@ jobs:
         run: |
           mkdir -p release_out
           find ${{ env.TARGET_DIR }} -maxdepth 1 -type f \( -name "*.bin" -o -name "*.manifest" \) -exec cp {} release_out/ \;
-          cp openwrt/bin/targets/mediatek/filogic/config.buildinfo release_out/
+          cp ${{ env.TARGET_DIR }}/config.buildinfo release_out/
+          echo "==== release_out 文件列表 ===="
           ls -la release_out
 
       - name: 创建Release发布
         if: steps.compile_firm.outputs.result == 'ok'
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@v1.14.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag: ${{ env.BUILD_TAG }}
           name: OpenWrt-ImmortalWrt包含ssr-plus ${{ env.BUILD_DATETIME }}
-          artifacts: release_out/*
+          artifacts: release_out/**/*
           generateReleaseNotes: true
           allowUpdates: true
+          removeArtifacts: true
+          replacesArtifacts: true
+          skipIfReleaseExists: false
 
-      - name: Group retain latest 2 releases per workflow suffix
+      - name: Group retain latest 2 releases for ssr‑plus
         if: steps.compile_firm.outputs.result == 'ok'
         uses: actions/github-script@v8
         with:
@@ -452,14 +458,13 @@ jobs:
             const validReleases = releases
               .filter(item => !item.draft)
               .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
-
             const groupReleases = validReleases.filter(r => r.tag_name.endsWith(groupSuffix));
-            console.log(`当前分组Release总数：${groupReleases.length}`);
+            console.log(`当前ssr‑plus分组Release总数：${groupReleases.length}`);
             const removeList = groupReleases.slice(reserveCount);
             console.log(`待删除数量：${removeList.length}`);
 
             for (const release of removeList) {
-              console.log(`开始删除 Release: ${release.tag_name}`);
+              console.log(`删除旧Release: ${release.tag_name}`);
               await github.rest.repos.deleteRelease({
                 owner, repo, release_id: release.id
               });
@@ -469,6 +474,6 @@ jobs:
                 });
                 console.log(`标签 ${release.tag_name} 删除成功`);
               } catch (err) {
-                console.log(`标签 ${release.tag_name} 删除警告：`, err.message);
+                console.warn(`标签 ${release.tag_name} 删除警告：`, err.message);
               }
             }
