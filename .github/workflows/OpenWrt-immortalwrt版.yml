@@ -157,11 +157,11 @@ jobs:
               if [[ -z "$remote_commit" || -z "$remote_tree" ]]; then
                 echo "ℹ️ git ls‑remote失败，切换GitHub API备用获取"
                 api_out=$(curl -s -m 12 --connect-timeout 8 "https://api.github.com/repos/${repo_path}/git/refs/heads/${branch}")
-                if [[ -n "${api_out}" && "${api_out}" != "{}" && "${api_out}" != *"message"* ]]; then
+                if [[ -n "${api_out}" && "${api_out}" != "{}" && "${api_out}" != *message* ]]; then
                   remote_commit=$(echo "$api_out" | awk -F'"' '/"sha"/{print $4;exit}')
                   remote_tree=$(echo "$api_out" | awk -F'"' '/"tree"/{getline;print $4;exit}')
                 else
-                  echo "⚠️ GitHub API返回空/报错，放弃API获取"
+                  echo "⚠️ GitHub API返回空/报错/限流，放弃API获取"
                 fi
               fi
 
