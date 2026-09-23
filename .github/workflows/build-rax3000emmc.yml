@@ -27,7 +27,7 @@ env:
   DIY_P1_SH: diy-part1_1.sh
   DIY_P2_SH: diy-part2.sh
   COMPILE_THREAD: 2
-  CACHE_KEY_VER: v2.4
+  CACHE_KEY_VER: v2.5
   TZ: Asia/Shanghai
   TARGET_DIR: openwrt/bin/targets/mediatek/filogic
 
@@ -141,28 +141,35 @@ jobs:
             repo_path=${repo_path%.git}
 
             if [[ "$check_type" == "simple" ]]; then
-              for retry in {1..3}; do
-                remote_commit=$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote --heads "$repo_url" 2>/dev/null \
-                  | awk -v full_ref="refs/heads/${branch}" '$2 == full_ref {print $1}' | tr -d '\r\n' | head -n1)
-                if [[ -n "$remote_commit" ]]; then
-                  remote_tree=$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote "$repo_url" "${remote_commit}^{tree}" 2>/dev/null | awk '{print $1}')
-                  if [[ -n "$remote_tree" ]]; then
-                    break
-                  fi
-                fi
-                echo "🔄 第${retry}次git ls‑remote获取失败，重试..."
-                sleep 3
-              done
-
-              if [[ -z "$remote_commit" || -z "$remote_tree" ]]; then
-                echo "ℹ️ git ls‑remote失败，切换GitHub API备用获取"
-                api_out=$(curl -s -m 12 --connect-timeout 8 "https://api.github.com/repos/${repo_path}/git/refs/heads/${branch}")
+              api_ok=0
+              for retry_api in {1..2}; do
+                api_out=$(curl -s -m 20 --connect-timeout 10 "https://api.github.com/repos/${repo_path}/git/refs/heads/${branch}")
                 if [[ -n "${api_out}" && "${api_out}" != "{}" && "${api_out}" != *message* ]]; then
                   remote_commit=$(echo "$api_out" | awk -F'"' '/"sha"/{print $4;exit}')
                   remote_tree=$(echo "$api_out" | awk -F'"' '/"tree"/{getline;print $4;exit}')
-                else
-                  echo "⚠️ GitHub API返回空/报错/限流，放弃API获取"
+                  if [[ -n "$remote_commit" && -n "$remote_tree" ]]; then
+                    api_ok=1
+                    break
+                  fi
                 fi
+                echo "🔄 API第${retry_api}次请求失败，重试..."
+                sleep 4
+              done
+
+              if [[ $api_ok -eq 0 ]]; then
+                echo "ℹ️ GitHub API全部失败，降级使用git ls‑remote"
+                for retry in {1..3}; do
+                  remote_commit=$(GIT_TERMINAL_PROMPT=0 timeout 20 git ls-remote --heads "$repo_url" 2>/dev/null \
+                    | awk -v full_ref="refs/heads/${branch}" '$2 == full_ref {print $1}' | tr -d '\r\n' | head -n1)
+                  if [[ -n "$remote_commit" ]]; then
+                    remote_tree=$(GIT_TERMINAL_PROMPT=0 timeout 20 git ls-remote "$repo_url" "${remote_commit}^{tree}" 2>/dev/null | awk '{print $1}')
+                    if [[ -n "$remote_tree" ]]; then
+                      break
+                    fi
+                  fi
+                  echo "🔄 第${retry}次git ls‑remote获取失败，重试..."
+                  sleep 5
+                done
               fi
 
             elif [[ "$check_type" == "full" ]]; then
@@ -233,7 +240,6 @@ jobs:
                 fi
                 new_hash=$(echo "$new_line" | cut -d';' -f3)
                 new_tree=$(echo "$new_line" | cut -d';' -f4)
-                # 核心判断：tree‑hash不一致=源码真改动；tree相同仅commit变化(rebase)不触发编译
                 if [[ "$old_tree" != "$new_tree" ]]; then
                   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                   echo "✅【插件检测到真实代码更新】$repo"
@@ -457,3 +463,23 @@ jobs:
 
             const validReleases = releases
               .filter(item => !item.draft)
+              .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+            const groupReleases = validReleases.filter(r => r.tag_name.endsWith(groupSuffix));
+            console.log(`当前passwall分组Release总数：${groupReleases.length}`);
+            const removeList = groupReleases.slice(reserveCount);
+            console.log(`待删除数量：${removeList.length}`);
+
+            for (const release of removeList) {
+              console.log(`删除旧Release: ${release.tag_name}`);
+              await github.rest.repos.deleteRelease({
+                owner, repo, release_id: release.id
+              });
+              try {
+                await github.rest.git.deleteRef({
+                  owner, repo, ref: `tags/${release.tag_name}`
+                });
+                console.log(`标签 ${release.tag_name} 删除成功`);
+              } catch (err) {
+                console.warn(`标签 ${release.tag_name} 删除警告：`, err.message);
+              }
+            }
