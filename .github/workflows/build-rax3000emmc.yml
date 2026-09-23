@@ -157,11 +157,11 @@ jobs:
               if [[ -z "$remote_commit" || -z "$remote_tree" ]]; then
                 echo "ℹ️ git ls‑remote失败，切换GitHub API备用获取"
                 api_out=$(curl -s -m 12 --connect-timeout 8 "https://api.github.com/repos/${repo_path}/git/refs/heads/${branch}")
-                if [[ -n "${api_out}" && "${api_out}" != "{}" && "${api_out}" != *"message"* ]]; then
+                if [[ -n "${api_out}" && "${api_out}" != "{}" && "${api_out}" != *message* ]]; then
                   remote_commit=$(echo "$api_out" | awk -F'"' '/"sha"/{print $4;exit}')
                   remote_tree=$(echo "$api_out" | awk -F'"' '/"tree"/{getline;print $4;exit}')
                 else
-                  echo "⚠️ GitHub API返回空/报错，放弃API获取"
+                  echo "⚠️ GitHub API返回空/报错/限流，放弃API获取"
                 fi
               fi
 
@@ -457,23 +457,3 @@ jobs:
 
             const validReleases = releases
               .filter(item => !item.draft)
-              .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
-            const groupReleases = validReleases.filter(r => r.tag_name.endsWith(groupSuffix));
-            console.log(`当前passwall分组Release总数：${groupReleases.length}`);
-            const removeList = groupReleases.slice(reserveCount);
-            console.log(`待删除数量：${removeList.length}`);
-
-            for (const release of removeList) {
-              console.log(`删除旧Release: ${release.tag_name}`);
-              await github.rest.repos.deleteRelease({
-                owner, repo, release_id: release.id
-              });
-              try {
-                await github.rest.git.deleteRef({
-                  owner, repo, ref: `tags/${release.tag_name}`
-                });
-                console.log(`标签 ${release.tag_name} 删除成功`);
-              } catch (err) {
-                console.warn(`标签 ${release.tag_name} 删除警告：`, err.message);
-              }
-            }
