@@ -24,10 +24,10 @@ env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
   REPO_BRANCH: openwrt-24.10-6.6
   CONFIG_FILE: rax3000emmc.config
-  DIY_P1_SH: diy-part1_1.sh
+  DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   COMPILE_THREAD: 2
-  CACHE_KEY_VER: v2.5
+  CACHE_KEY_VER: v1.3
   TZ: Asia/Shanghai
   TARGET_DIR: openwrt/bin/targets/mediatek/filogic
 
@@ -60,7 +60,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential libncurses-dev gawk flex bison quilt libssl-dev xsltproc libxml2-utils \
-          zstd device-tree-compiler python3 python3-ply python3-docutils libelf-dev ccache git curl
+          zstd device-tree-compiler python3 python3-ply python3-docutils libelf-dev ccache
 
       - name: 清理本地缓存
         if: github.event.inputs.clean_cache == 'true'
@@ -76,19 +76,9 @@ jobs:
             .ccache
             last_commit.txt
             plugins_last.txt
-            plugins_remote.txt
           key: mt798x-6.6-${{ env.CACHE_KEY_VER }}
           restore-keys: |
             mt798x-6.6-${{ env.CACHE_KEY_VER }}
-
-      - name: 调试‑检查缓存快照文件
-        run: |
-          echo "===== plugins_last.txt 状态 ====="
-          ls -la plugins_last.txt || echo "❌ 文件不存在"
-          cat plugins_last.txt || echo "文件为空"
-          echo -e "\n===== last_commit.txt 状态 ====="
-          ls -la last_commit.txt || echo "❌ 文件不存在"
-        shell: bash
 
       - name: 校验源码目录
         run: |
@@ -122,102 +112,68 @@ jobs:
           > plugins_remote.txt
           > plugin_changed_list.txt
           NEED_PLUGIN_UPDATE=0
-
+          # 插件数组格式：repo;branch;check_type
+          # simple: ls‑remote轻量检测；full: clone仓库获取commit
           plugin_list=(
-            "https://github.com/vernesong/OpenClash.git;master;simple"
             "https://github.com/Openwrt-Passwall/openwrt-passwall.git;main;simple"
+            "https://github.com/vernesong/OpenClash.git;master;simple"
           )
-
           TMP_SMALL="./tmp_small_check"
           rm -rf "${TMP_SMALL}"
-
           for item in "${plugin_list[@]}"; do
             IFS=';' read -r repo_url branch check_type <<< "$item"
             echo "检测仓库: $repo_url 分支:$branch 检测模式:$check_type"
             remote_commit=""
-            remote_tree=""
-
-            repo_path=${repo_url#https://github.com/}
-            repo_path=${repo_path%.git}
-
             if [[ "$check_type" == "simple" ]]; then
-              api_ok=0
-              for retry_api in {1..2}; do
-                api_out=$(curl -s -m 20 --connect-timeout 10 "https://api.github.com/repos/${repo_path}/git/refs/heads/${branch}")
-                if [[ -n "${api_out}" && "${api_out}" != "{}" && "${api_out}" != *message* ]]; then
-                  remote_commit=$(echo "$api_out" | awk -F'"' '/"sha"/{print $4;exit}')
-                  remote_tree=$(echo "$api_out" | awk -F'"' '/"tree"/{getline;print $4;exit}')
-                  if [[ -n "$remote_commit" && -n "$remote_tree" ]]; then
-                    api_ok=1
-                    break
-                  fi
+              # 严格仅提取40位Commit Hash，彻底过滤refs/heads/*后缀
+              for retry in {1..3}; do
+                remote_commit=$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote --heads "$repo_url" 2>/dev/null \
+                  | awk -v full_ref="refs/heads/${branch}" '$2 == full_ref {print $1}' | tr -d '\r' | head -n1)
+                if [[ -n "$remote_commit" ]]; then
+                  break
                 fi
-                echo "🔄 API第${retry_api}次请求失败，重试..."
-                sleep 4
+                echo "🔄 第${retry}次获取commit失败，重试..."
+                sleep 3
               done
-
-              if [[ $api_ok -eq 0 ]]; then
-                echo "ℹ️ GitHub API全部失败，降级使用git ls‑remote"
-                for retry in {1..3}; do
-                  remote_commit=$(GIT_TERMINAL_PROMPT=0 timeout 20 git ls-remote --heads "$repo_url" 2>/dev/null \
-                    | awk -v full_ref="refs/heads/${branch}" '$2 == full_ref {print $1}' | tr -d '\r\n' | head -n1)
-                  if [[ -n "$remote_commit" ]]; then
-                    remote_tree=$(GIT_TERMINAL_PROMPT=0 timeout 20 git ls-remote "$repo_url" "${remote_commit}^{tree}" 2>/dev/null | awk '{print $1}')
-                    if [[ -n "$remote_tree" ]]; then
-                      break
-                    fi
-                  fi
-                  echo "🔄 第${retry}次git ls‑remote获取失败，重试..."
-                  sleep 5
-                done
-              fi
-
             elif [[ "$check_type" == "full" ]]; then
               for retry in {1..2}; do
                 rm -rf "${TMP_SMALL}"
                 git clone --depth=1 -b "${branch}" "${repo_url}" "${TMP_SMALL}" 2>/dev/null || true
                 if [ -d "${TMP_SMALL}/.git" ]; then
-                  remote_commit=$(cd "${TMP_SMALL}"; git rev-parse HEAD | tr -d '\r\n')
-                  remote_tree=$(cd "${TMP_SMALL}"; git rev-parse HEAD^{tree} | tr -d '\r\n')
+                  remote_commit=$(cd "${TMP_SMALL}"; git rev-parse HEAD)
                   break
                 fi
                 echo "🔄 仓库clone失败，第${retry}次重试..."
                 sleep 4
               done
             fi
-
-            if [ -z "$remote_commit" ] || [ -z "$remote_tree" ]; then
-              echo "⚠️ git+API全部获取commit/tree失败: $repo_url $branch"
+            # 网络失败处理逻辑
+            if [ -z "$remote_commit" ]; then
+              echo "⚠️ 网络获取commit失败: $repo_url $branch"
               if [ -f plugins_last.txt ]; then
                   old_line=$(grep "^${repo_url};${branch};" plugins_last.txt || true)
                   if [ -n "$old_line" ]; then
-                      old_commit=$(echo "$old_line" | cut -d';' -f3 | awk '{print $1}')
-                      old_tree=$(echo "$old_line" | cut -d';' -f4 | awk '{print $1}')
-                      remote_commit=${old_commit}
-                      remote_tree=${old_tree}
-                      echo "ℹ️ 复用上一轮快照commit+tree，本次不触发编译"
-                      echo "${repo_url};${branch};${remote_commit};${remote_tree}" >> plugins_remote.txt
+                      old_hash=$(echo "$old_line" | cut -d';' -f3 | awk '{print $1}')
+                      remote_commit=${old_hash}
+                      echo "ℹ️ 复用上一轮快照commit: ${remote_commit}"
+                      echo "${repo_url};${branch};${remote_commit}" >> plugins_remote.txt
                       continue
                   fi
               fi
-              echo "🚨 无历史快照，网络异常，保守策略：强制触发编译 $repo_url"
-              NEED_PLUGIN_UPDATE=1
+              echo "🛑 首次拉取网络异常，跳过插件更新检测 $repo_url"
               continue
             fi
-            echo "${repo_url};${branch};${remote_commit};${remote_tree}" >> plugins_remote.txt
+            echo "${repo_url};${branch};${remote_commit}" >> plugins_remote.txt
           done
-
           rm -rf "${TMP_SMALL}"
-
+          # 对比旧快照，查找更新/移除插件
           if [ -f plugins_last.txt ]; then
             while IFS= read -r line; do
-                [[ -z "$line" ]] && continue
                 repo=$(echo "$line" | cut -d';' -f1)
                 branch=$(echo "$line" | cut -d';' -f2)
+                # 关键修复：自动剔除旧HASH里refs/heads多余字符，只保留哈希
                 old_hash=$(echo "$line" | cut -d';' -f3 | awk '{print $1}')
-                old_tree=$(echo "$line" | cut -d';' -f4 | awk '{print $1}')
                 new_line=$(grep "^${repo};${branch};" plugins_remote.txt || true)
-
                 if [ -z "$new_line" ]; then
                     exist_in_list=0
                     for p in "${plugin_list[@]}"; do
@@ -239,51 +195,49 @@ jobs:
                     continue
                 fi
                 new_hash=$(echo "$new_line" | cut -d';' -f3)
-                new_tree=$(echo "$new_line" | cut -d';' -f4)
-                if [[ "$old_tree" != "$new_tree" ]]; then
+                if [[ "$old_hash" != "$new_hash" ]]; then
                   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                  echo "✅【插件检测到真实代码更新】$repo"
+                  echo "✅【插件检测到更新】$repo"
                   echo "分支: $branch"
-                  echo "旧COMMIT: $old_hash"
-                  echo "新COMMIT: $new_hash"
-                  echo "旧TREE: $old_tree"
-                  echo "新TREE: $new_tree"
+                  echo "旧HASH: $old_hash"
+                  echo "新HASH: $new_hash"
                   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                   NEED_PLUGIN_UPDATE=1
                   echo "${repo};${branch};${old_hash}->${new_hash}" >> plugin_changed_list.txt
-                else
-                  echo "ℹ️ $repo 仅commit哈希变动，Tree不变，判定为rebase，不触发编译"
                 fi
             done < plugins_last.txt
-
+            # ========== 已修改部分：新增插件直接触发编译 + 打印hash ==========
             while IFS= read -r line; do
-              [[ -z "$line" ]] && continue
               repo=$(echo "$line"|cut -d';' -f1)
               branch=$(echo "$line"|cut -d';' -f2)
               new_hash=$(echo "$line"|cut -d';' -f3)
-              new_tree=$(echo "$line"|cut -d';' -f4)
               if ! grep -q "^${repo};${branch};" plugins_last.txt; then
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo "ℹ️【首次新增插件初始化】$repo 分支:$branch，本次不触发编译"
+                echo "✅【首次新增插件】$repo 分支:$branch，触发编译"
                 echo "初始旧HASH: 不存在(首次初始化)"
-                echo "远程最新COMMIT: $new_hash"
-                echo "远程最新TREE: $new_tree"
-                echo "下次插件更新才会触发编译"
+                echo "远程最新HASH: $new_hash"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo "${repo};${branch};FIRST_INIT->${new_hash}" >> plugin_changed_list.txt
+                NEED_PLUGIN_UPDATE=1
+                echo "${repo};${branch};FIRST_ADD_TRIGGER->${new_hash}" >> plugin_changed_list.txt
               fi
             done < plugins_remote.txt
-
+            # ==============================================================
             if [ $NEED_PLUGIN_UPDATE -eq 0 ]; then
               echo "✅ 所有插件无版本更新"
             fi
+            # --------修复cp同文件报错--------
+            if ! cmp -s plugins_remote.txt plugins_last.txt;then
+              cp plugins_remote.txt plugins_last.txt
+            fi
           else
+            # 第一次运行：初始化快照
             echo "ℹ️ 首次运行，生成初始插件哈希快照，本次插件无更新判定"
+            cp plugins_remote.txt plugins_last.txt
+            NEED_PLUGIN_UPDATE=0
           fi
-
           echo "NEED_PLUGIN_UPDATE=${NEED_PLUGIN_UPDATE}" >> $GITHUB_ENV
 
-      - name: 执行 diy-part1_1.sh
+      - name: 执行 diy-part1.sh
         run: |
           chmod +x ${{ env.DIY_P1_SH }}
           cd openwrt
@@ -306,19 +260,19 @@ jobs:
             echo "⚠️ 手动强制编译开启"
             NEED_BUILD=1
           fi
-
+          # 上游源码更新对比
           if [ $NEED_BUILD -eq 0 ] && [ -f last_commit.txt ] && [ -f upstream_commit.txt ]; then
             if ! diff -q last_commit.txt upstream_commit.txt >/dev/null; then
               echo "⚠️ 上游源码更新，触发编译"
               NEED_BUILD=1
             fi
           fi
-
+          # 第三方插件更新（读取shell环境变量NEED_PLUGIN_UPDATE）
           if [ $NEED_BUILD -eq 0 ] && [ "${NEED_PLUGIN_UPDATE:-0}" -eq 1 ]; then
             echo "⚠️ 第三方插件存在变更，触发编译"
             NEED_BUILD=1
           fi
-
+          # 使用git检测仓库配置文件真实改动，消除defconfig自动变更误判
           if [ $NEED_BUILD -eq 0 ]; then
             if [ ! -f last_commit.txt ]; then
               echo "ℹ️ 首次构建，源码快照不存在，编译一次生成快照"
@@ -333,17 +287,7 @@ jobs:
               fi
             fi
           fi
-
           echo "NEED_BUILD=${NEED_BUILD}" >> $GITHUB_ENV
-
-      - name: 无需编译‑更新插件哈希快照并退出
-        if: env.NEED_BUILD == '0'
-        run: |
-          cp -f plugins_remote.txt plugins_last.txt
-          sync
-          echo "==== 无需编译，更新plugins_last.txt ===="
-          cat plugins_last.txt
-          echo "✅ 快照已刷新，job正常结束，cache保存新版本"
 
       - name: 预下载源码包
         if: env.NEED_BUILD == '1'
@@ -379,15 +323,11 @@ jobs:
           echo "result=${RESULT}" >> $GITHUB_OUTPUT
           echo "BOARD=${BOARD}" >> $GITHUB_OUTPUT
 
-      - name: 更新源码&插件快照（仅编译成功才更新）
+      - name: 更新缓存快照
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
-          cp -f upstream_commit.txt last_commit.txt
-          cp -f plugins_remote.txt plugins_last.txt
-          sync
-          echo "✅ last_commit.txt 更新完成"
-          echo "✅ plugins_last.txt 更新完成"
-          cat plugins_last.txt
+          cp upstream_commit.txt last_commit.txt
+          echo "✅ 快照已更新存入缓存"
 
       - name: 上传插件变更清单
         uses: actions/upload-artifact@v5
@@ -427,50 +367,43 @@ jobs:
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
           mkdir -p release_out
+          # 复制固件bin、manifest
           find ${{ env.TARGET_DIR }} -maxdepth 1 -type f \( -name "*.bin" -o -name "*.manifest" \) -exec cp {} release_out/ \;
-          cp ${{ env.TARGET_DIR }}/config.buildinfo release_out/
-          echo "==== release_out 文件列表 ===="
+          # 复制编译生成的config.buildinfo文件
+          cp openwrt/bin/targets/mediatek/filogic/config.buildinfo release_out/
           ls -la release_out
 
       - name: 创建Release发布
         if: steps.compile_firm.outputs.result == 'ok'
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag: ${{ env.BUILD_TAG }}
-          name: rax3000emmc 包含passwall ${{ env.BUILD_DATETIME }}
-          artifacts: release_out/**/*
+          name: build-rax3000emmc包含passwall ${{ env.BUILD_DATETIME }}
+          artifacts: release_out/*
           generateReleaseNotes: true
           allowUpdates: true
-          removeArtifacts: true
-          replacesArtifacts: true
-          skipIfReleaseExists: false
 
-      - name: Group retain latest 2 releases for passwall
+      - name: Retain latest 5 releases, remove older releases & tags
         if: steps.compile_firm.outputs.result == 'ok'
         uses: actions/github-script@v8
         with:
           script: |
             const { owner, repo } = context.repo;
-            const groupSuffix = "_passwall";
-            const reserveCount = 2;
-            console.log(`分组后缀: ${groupSuffix}，每组保留最新${reserveCount}个Release`);
-
+            const reserveCount = 5;
+            console.log(`设置保留最新 ${reserveCount} 个正式Release`);
             const { data: releases } = await github.rest.repos.listReleases({
               owner, repo, per_page: 100
             });
-
             const validReleases = releases
               .filter(item => !item.draft)
               .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
-            const groupReleases = validReleases.filter(r => r.tag_name.endsWith(groupSuffix));
-            console.log(`当前passwall分组Release总数：${groupReleases.length}`);
-            const removeList = groupReleases.slice(reserveCount);
+            console.log(`当前正式Release总数：${validReleases.length}`);
+            const removeList = validReleases.slice(reserveCount);
             console.log(`待删除数量：${removeList.length}`);
-
             for (const release of removeList) {
-              console.log(`删除旧Release: ${release.tag_name}`);
+              console.log(`开始删除 Release: ${release.tag_name}`);
               await github.rest.repos.deleteRelease({
                 owner, repo, release_id: release.id
               });
@@ -480,6 +413,6 @@ jobs:
                 });
                 console.log(`标签 ${release.tag_name} 删除成功`);
               } catch (err) {
-                console.warn(`标签 ${release.tag_name} 删除警告：`, err.message);
+                console.log(`标签 ${release.tag_name} 删除警告：`, err.message);
               }
             }
