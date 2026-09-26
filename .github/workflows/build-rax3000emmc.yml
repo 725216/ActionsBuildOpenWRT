@@ -26,7 +26,7 @@ env:
   CONFIG_FILE: rax3000emmc.config
   DIY_P1_SH: diy-part1_1.sh
   DIY_P2_SH: diy-part2.sh
-  COMPILE_THREAD: 2
+  COMPILE_THREAD: 3
   CACHE_KEY_VER: v1.3
   TZ: Asia/Shanghai
   TARGET_DIR: openwrt/bin/targets/mediatek/filogic
@@ -70,6 +70,7 @@ jobs:
 
       - name: 恢复编译缓存 dl + ccache + 插件哈希快照
         uses: actions/cache@v6
+        id: cache_restore
         with:
           path: |
             openwrt/dl
@@ -305,9 +306,16 @@ jobs:
           cd openwrt
           THREAD=${{ env.COMPILE_THREAD }}
           LOG=${{ github.workspace }}/build.log
+          # 限制ccache大小，防止无限膨胀
+          ccache -M 1.8G
+          ccache -z
+          # 后台内存监控，记录OOM痕迹
+          (while true; do echo "==== MEM $(date) ===="; free -h; sleep 30; done) &
+          MEM_PID=$!
           set -o pipefail
           RESULT="fail"
-          if nice -n 10 make -j${THREAD} 2>&1 | tee ${LOG}; then
+          ulimit -s 65536
+          if nice -n 10 make -j${THREAD} V=s 2>&1 | tee ${LOG}; then
             RESULT="ok"
           else
             echo "❌ 多线程编译失败，切换单线程重试"
@@ -316,18 +324,20 @@ jobs:
               RESULT="ok"
             else
               echo "❌ 编译最终失败"
-              exit 1
             fi
           fi
+          kill $MEM_PID 2>/dev/null || true
           BOARD=$(grep CONFIG_TARGET_BOARD .config | cut -d'=' -f2 | tr -d '"')
           echo "result=${RESULT}" >> $GITHUB_OUTPUT
           echo "BOARD=${BOARD}" >> $GITHUB_OUTPUT
 
-      - name: 更新缓存快照
-        if: steps.compile_firm.outputs.result == 'ok'
-        run: |
-          cp upstream_commit.txt last_commit.txt
-          echo "✅ 快照已更新存入缓存"
+      - name: 上传编译日志(无论编译成功失败都上传)
+        uses: actions/upload-artifact@v5
+        if: env.NEED_BUILD == '1'
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
 
       - name: 上传插件变更清单
         uses: actions/upload-artifact@v5
@@ -337,13 +347,22 @@ jobs:
           path: plugin_changed_list.txt
           retention-days: 7
 
-      - name: 上传编译日志
-        uses: actions/upload-artifact@v5
-        if: env.NEED_BUILD == '1'
+      - name: 更新本地快照
+        if: steps.compile_firm.outputs.result == 'ok'
+        run: |
+          cp upstream_commit.txt last_commit.txt
+          echo "✅ 快照已更新"
+
+      - name: 保存编译缓存 dl + ccache + 插件哈希快照
+        uses: actions/cache@v6
+        if: steps.compile_firm.outputs.result == 'ok'
         with:
-          name: build-log
-          path: build.log
-          retention-days: 7
+          path: |
+            openwrt/dl
+            .ccache
+            last_commit.txt
+            plugins_last.txt
+          key: mt798x-6.6-${{ env.CACHE_KEY_VER }}
 
       - name: 上传固件文件（Artifact）
         if: steps.compile_firm.outputs.result == 'ok'
@@ -408,7 +427,7 @@ jobs:
                 owner, repo, release_id: release.id
               });
               try {
-                await github.rest.git.deleteRef({
+                await await github.rest.git.deleteRef({
                   owner, repo, ref: `tags/${release.tag_name}`
                 });
                 console.log(`标签 ${release.tag_name} 删除成功`);
