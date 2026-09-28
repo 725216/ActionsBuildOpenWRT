@@ -26,11 +26,10 @@ env:
   CONFIG_FILE: rax3000emmc.config
   DIY_P1_SH: diy-part1_1.sh
   DIY_P2_SH: diy-part2.sh
-  COMPILE_THREAD: 3
+  COMPILE_THREAD: 2
   CACHE_KEY_VER: v1.3
   TZ: Asia/Shanghai
-  # RAX3000 emmc真实输出路径 mt798x，不是filogic
-  TARGET_DIR: openwrt/bin/targets/mediatek/mt798x
+  TARGET_DIR: openwrt/bin/targets/mediatek/filogic
 
 jobs:
   build:
@@ -46,6 +45,14 @@ jobs:
           large-packages: true
           docker-images: true
           swap-storage: true
+
+      - name: 创建swap交换分区缓解OOM内存溢出
+        run: |
+          sudo fallocate -l 6G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
 
       - name: 拉取仓库配置文件
         uses: actions/checkout@v6
@@ -313,15 +320,18 @@ jobs:
           # 后台内存监控，记录OOM痕迹
           (while true; do echo "==== MEM $(date) ===="; free -h; sleep 30; done) &
           MEM_PID=$!
-          set -o pipefail
           RESULT="fail"
           ulimit -s 65536
-          if nice -n 10 make -j${THREAD} V=s 2>&1 | tee ${LOG}; then
+          nice -n 10 make -j${THREAD} V=s > ${LOG} 2>&1
+          ret=$?
+          if [ $ret -eq 0 ]; then
             RESULT="ok"
           else
             echo "❌ 多线程编译失败，切换单线程重试"
             cat ${LOG}
-            if nice -n 10 make -j1 V=s 2>&1 | tee ${LOG}; then
+            nice -n 10 make -j1 V=s > ${LOG} 2>&1
+            ret2=$?
+            if [ $ret2 -eq 0 ]; then
               RESULT="ok"
             else
               echo "❌ 编译最终失败"
@@ -387,12 +397,9 @@ jobs:
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
           mkdir -p release_out
-          # 打印目录，方便排错
           ls -la openwrt/bin/targets/mediatek/
           ls -la ${{ env.TARGET_DIR }}
-          # 复制固件bin、manifest
           find ${{ env.TARGET_DIR }} -maxdepth 1 -type f \( -name "*.bin" -o -name "*.manifest" \) -exec cp {} release_out/ \;
-          # 复制编译生成的config.buildinfo文件
           cp ${{ env.TARGET_DIR }}/config.buildinfo release_out/
           echo "==== release_out目录文件列表 ===="
           ls -la release_out
