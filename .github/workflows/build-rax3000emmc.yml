@@ -1,7 +1,7 @@
 name: build-rax3000emmc包含passwall
 on:
   schedule:
-    - cron: 0 21 * * *
+    - cron: 10 21 * * *
   push:
     paths:
       - rax3000emmc.config
