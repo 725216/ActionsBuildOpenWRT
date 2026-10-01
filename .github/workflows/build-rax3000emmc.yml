@@ -1,5 +1,4 @@
 name: build-rax3000emmc包含passwall
-
 on:
   schedule:
     - cron: 0 21 * * *
@@ -19,18 +18,16 @@ on:
         required: false
         default: false
         type: boolean
-
 env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
   REPO_BRANCH: openwrt-24.10-6.6
-  CONFIG_FILE: rax3000emmc.config
+  CONFIG_FILE: OpenWrt-immortalwrt.config
   DIY_P1_SH: diy-part1_1.sh
   DIY_P2_SH: diy-part2.sh
   COMPILE_THREAD: 2
-  CACHE_KEY_VER: v1.3
+  CACHE_KEY_VER: v1.3-passwall
   TZ: Asia/Shanghai
   TARGET_DIR: openwrt/bin/targets/mediatek/filogic
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -45,40 +42,26 @@ jobs:
           large-packages: true
           docker-images: true
           swap-storage: true
-
-      - name: 创建swap交换分区缓解OOM内存溢出
-        run: |
-          sudo fallocate -l 6G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          free -h
-
       - name: 拉取仓库配置文件
         uses: actions/checkout@v6
-
       - name: 生成编译日期标签
         run: |
-          echo "BUILD_TAG=build-$(date +%Y%m%d)_passwall" >> $GITHUB_ENV
+          echo "BUILD_TAG=build-$(date +%Y%m%d)_ssr-plus" >> $GITHUB_ENV
           echo "BUILD_DATETIME=$(date +%Y-%m-%d_%H-%M)" >> $GITHUB_ENV
         env:
           TZ: Asia/Shanghai
-
       - name: 安装OpenWrt编译完整依赖
         run: |
           sudo apt update
           sudo apt install -y build-essential libncurses-dev gawk flex bison quilt libssl-dev xsltproc libxml2-utils \
           zstd device-tree-compiler python3 python3-ply python3-docutils libelf-dev ccache
-
       - name: 清理本地缓存
         if: github.event.inputs.clean_cache == 'true'
         run: |
           rm -rf openwrt .ccache build.log upstream_commit.txt last_commit.txt plugins_remote.txt plugins_last.txt plugin_changed_list.txt tmp_small_check || true
           echo "✅ 缓存清理完成"
-
       - name: 恢复编译缓存 dl + ccache + 插件哈希快照
         uses: actions/cache@v6
-        id: cache_restore
         with:
           path: |
             openwrt/dl
@@ -88,7 +71,6 @@ jobs:
           key: mt798x-6.6-${{ env.CACHE_KEY_VER }}
           restore-keys: |
             mt798x-6.6-${{ env.CACHE_KEY_VER }}
-
       - name: 校验源码目录
         run: |
           if [ -d openwrt ]; then
@@ -101,7 +83,6 @@ jobs:
               rm -rf openwrt
             fi
           fi
-
       - name: 克隆/更新源码
         run: |
           if [ ! -d openwrt ]; then
@@ -114,7 +95,6 @@ jobs:
           fi
           cd openwrt
           git rev-parse HEAD > ../upstream_commit.txt
-
       - name: 检测第三方插件远程最新commit
         id: check_plugins
         run: |
@@ -124,8 +104,8 @@ jobs:
           # 插件数组格式：repo;branch;check_type
           # simple: ls‑remote轻量检测；full: clone仓库获取commit
           plugin_list=(
-            "https://github.com/Openwrt-Passwall/openwrt-passwall.git;main;simple"
             "https://github.com/vernesong/OpenClash.git;master;simple"
+            "https://github.com/Openwrt-Passwall/openwrt-passwall.git;main;simple"
           )
           TMP_SMALL="./tmp_small_check"
           rm -rf "${TMP_SMALL}"
@@ -245,13 +225,11 @@ jobs:
             NEED_PLUGIN_UPDATE=0
           fi
           echo "NEED_PLUGIN_UPDATE=${NEED_PLUGIN_UPDATE}" >> $GITHUB_ENV
-
       - name: 执行 diy-part1_1.sh
         run: |
           chmod +x ${{ env.DIY_P1_SH }}
           cd openwrt
           ../${{ env.DIY_P1_SH }}
-
       - name: 导入配置 + 执行 diy-part2.sh
         run: |
           cp ${{ env.CONFIG_FILE }} openwrt/.config
@@ -259,7 +237,6 @@ jobs:
           cd openwrt
           ../${{ env.DIY_P2_SH }}
           make defconfig
-
       - name: 判断是否启动编译
         id: judge_build
         run: |
@@ -297,7 +274,6 @@ jobs:
             fi
           fi
           echo "NEED_BUILD=${NEED_BUILD}" >> $GITHUB_ENV
-
       - name: 预下载源码包
         if: env.NEED_BUILD == '1'
         run: |
@@ -306,7 +282,6 @@ jobs:
           find dl -size -1024c -exec rm -f {} \;
           make download -j$(nproc) || make download -j1 V=s
           echo "✅ 源码包下载完成"
-
       - name: 编译固件
         id: compile_firm
         if: env.NEED_BUILD == '1'
@@ -314,42 +289,28 @@ jobs:
           cd openwrt
           THREAD=${{ env.COMPILE_THREAD }}
           LOG=${{ github.workspace }}/build.log
-          # 限制ccache大小，防止无限膨胀
-          ccache -M 1.8G
-          ccache -z
-          # 后台内存监控，记录OOM痕迹
-          (while true; do echo "==== MEM $(date) ===="; free -h; sleep 30; done) &
-          MEM_PID=$!
+          set -o pipefail
           RESULT="fail"
-          ulimit -s 65536
-          nice -n 10 make -j${THREAD} V=s > ${LOG} 2>&1
-          ret=$?
-          if [ $ret -eq 0 ]; then
+          if nice -n 10 make -j${THREAD} 2>&1 | tee ${LOG}; then
             RESULT="ok"
           else
             echo "❌ 多线程编译失败，切换单线程重试"
             cat ${LOG}
-            nice -n 10 make -j1 V=s > ${LOG} 2>&1
-            ret2=$?
-            if [ $ret2 -eq 0 ]; then
+            if nice -n 10 make -j1 V=s 2>&1 | tee ${LOG}; then
               RESULT="ok"
             else
               echo "❌ 编译最终失败"
+              exit 1
             fi
           fi
-          kill $MEM_PID 2>/dev/null || true
           BOARD=$(grep CONFIG_TARGET_BOARD .config | cut -d'=' -f2 | tr -d '"')
           echo "result=${RESULT}" >> $GITHUB_OUTPUT
           echo "BOARD=${BOARD}" >> $GITHUB_OUTPUT
-
-      - name: 上传编译日志(无论编译成功失败都上传)
-        uses: actions/upload-artifact@v5
-        if: env.NEED_BUILD == '1'
-        with:
-          name: build-log
-          path: build.log
-          retention-days: 7
-
+      - name: 更新缓存快照
+        if: steps.compile_firm.outputs.result == 'ok'
+        run: |
+          cp upstream_commit.txt last_commit.txt
+          echo "✅ 快照已更新存入缓存"
       - name: 上传插件变更清单
         uses: actions/upload-artifact@v5
         if: env.NEED_BUILD == '1'
@@ -357,24 +318,13 @@ jobs:
           name: plugin-change-log
           path: plugin_changed_list.txt
           retention-days: 7
-
-      - name: 更新本地快照
-        if: steps.compile_firm.outputs.result == 'ok'
-        run: |
-          cp upstream_commit.txt last_commit.txt
-          echo "✅ 快照已更新"
-
-      - name: 保存编译缓存 dl + ccache + 插件哈希快照
-        uses: actions/cache@v6
-        if: steps.compile_firm.outputs.result == 'ok'
+      - name: 上传编译日志
+        uses: actions/upload-artifact@v5
+        if: env.NEED_BUILD == '1'
         with:
-          path: |
-            openwrt/dl
-            .ccache
-            last_commit.txt
-            plugins_last.txt
-          key: mt798x-6.6-${{ env.CACHE_KEY_VER }}
-
+          name: build-log
+          path: build.log
+          retention-days: 7
       - name: 上传固件文件（Artifact）
         if: steps.compile_firm.outputs.result == 'ok'
         uses: actions/upload-artifact@v5
@@ -384,7 +334,6 @@ jobs:
             openwrt/bin/targets/**/*.bin
             openwrt/bin/targets/**/*.manifest
           retention-days: 14
-
       - name: 上传完整bin目录到Artifact
         if: steps.compile_firm.outputs.result == 'ok'
         uses: actions/upload-artifact@v5
@@ -392,18 +341,15 @@ jobs:
           name: All-Bin-Full-Directory
           path: openwrt/bin
           retention-days: 14
-
       - name: Prepare release artifacts（打包固件 + config.buildinfo）
         if: steps.compile_firm.outputs.result == 'ok'
         run: |
           mkdir -p release_out
-          ls -la openwrt/bin/targets/mediatek/
-          ls -la ${{ env.TARGET_DIR }}
+          # 复制固件bin、manifest
           find ${{ env.TARGET_DIR }} -maxdepth 1 -type f \( -name "*.bin" -o -name "*.manifest" \) -exec cp {} release_out/ \;
-          cp ${{ env.TARGET_DIR }}/config.buildinfo release_out/
-          echo "==== release_out目录文件列表 ===="
+          # 复制编译生成的config.buildinfo文件
+          cp openwrt/bin/targets/mediatek/filogic/config.buildinfo release_out/
           ls -la release_out
-
       - name: 创建Release发布
         if: steps.compile_firm.outputs.result == 'ok'
         uses: ncipollo/release-action@v1
@@ -411,11 +357,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag: ${{ env.BUILD_TAG }}
-          name: build-rax3000emmc包含passwall ${{ env.BUILD_DATETIME }}
+          name: OpenWrt-ImmortalWrt ${{ env.BUILD_DATETIME }}
           artifacts: release_out/*
           generateReleaseNotes: true
           allowUpdates: true
-
       - name: Retain latest 5 releases, remove older releases & tags
         if: steps.compile_firm.outputs.result == 'ok'
         uses: actions/github-script@v8
