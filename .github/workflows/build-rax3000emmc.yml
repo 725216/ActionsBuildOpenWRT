@@ -357,7 +357,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag: ${{ env.BUILD_TAG }}
-          name: OpenWrt-ImmortalWrt ${{ env.BUILD_DATETIME }}
+          name: build-rax3000emmc包含passwall ${{ env.BUILD_DATETIME }}
           artifacts: release_out/*
           generateReleaseNotes: true
           allowUpdates: true
