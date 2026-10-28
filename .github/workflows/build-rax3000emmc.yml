@@ -112,7 +112,6 @@ jobs:
           # passwall插件源
           plugin_list=(
             "https://github.com/xiaorouji/openwrt-passwall.git;main;simple"
-            "https://github.com/xiaorouji/openwrt-passwall-packages.git;main;simple"
           )
           TMP_SMALL="./tmp_small_check"
           rm -rf "${TMP_SMALL}"
