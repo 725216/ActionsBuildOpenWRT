@@ -96,7 +96,6 @@ jobs:
           cd openwrt
           git rev-parse HEAD > ../upstream_commit.txt
 
-      # ========== 原样恢复你的插件变更检测 ==========
       - name: 检测第三方插件远程最新commit
         id: check_plugins
         run: |
@@ -106,7 +105,6 @@ jobs:
           # 插件数组格式：repo;branch;check_type
           # simple: ls‑remote轻量检测；full: clone仓库获取commit
           plugin_list=(
-            "https://github.com/vernesong/OpenClash.git;master;simple"
             "https://github.com/fw876/helloworld.git;dev;simple"
           )
           TMP_SMALL="./tmp_small_check"
